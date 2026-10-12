@@ -5,57 +5,48 @@ const PORT = Number(process.env.PORT) || 3000;
 const engines = {
 opportunityDiscovery: {
 name: "Opportunity Discovery Engine",
-purpose: "Discover problems, unmet needs, gaps, and opportunities.",
 stages: [
-"Understand the idea",
-"Identify the problem",
-"Investigate needs",
-"Discover opportunities",
+"Understand the problem",
+"Identify unmet needs",
+"Explore opportunities",
+"Compare solutions",
 "Recommend next actions"
 ]
 },
 novaGenesis: {
 name: "Nova Genesis Engine",
-purpose: "Develop ideas into structured projects and innovations.",
 stages: [
-"Capture the idea",
+"Capture an idea",
 "Understand its purpose",
-"Explore possible solutions",
+"Explore solutions",
 "Create a development plan",
 "Test and improve"
 ]
 }
 };
 
-function analyze(input, mode = "all") {
-const question = String(input || "").trim();
-
-if (!question) {
+function analyze(question, mode) {
+if (typeof question !== "string" || !question.trim()) {
 return {
 success: false,
-message: "Please provide a question, problem, or idea."
+message: "Please provide a question or idea."
 };
 }
 
-const words = question
-.replace(/[^\w\s-]/g, "")
-.split(/\s+/)
-.filter(Boolean);
-
 return {
 success: true,
+name: "Nova AI",
 version: "2.0.0",
-mode,
-question,
+mode: mode || "all",
+question: question.trim(),
 understanding: {
-summary: "The input concerns: ${question}",
-keyTerms: words.slice(0, 12),
+summary: "Understanding the question and intended outcome.",
 problemToExplore:
-"Determine the underlying need, who is affected, and what outcome is desired."
+"Identify the need, affected users, and desired result."
 },
 investigation: {
 questions: [
-"What evidence supports this idea or problem?",
+"What evidence supports this problem?",
 "Who experiences this need?",
 "What solutions already exist?"
 ],
@@ -64,49 +55,44 @@ evidenceStatus: "Not yet researched"
 opportunities: [
 {
 title: "Explore possible solutions",
-reason: "Investigate unmet needs and compare available alternatives."
+nextStep: "Investigate needs and compare alternatives."
 }
 ],
 nextActions: [
 "Clarify the desired outcome",
-"Gather relevant evidence",
-"Compare possible solutions",
-"Choose a practical next step"
+"Gather evidence",
+"Compare alternatives",
+"Choose a practical next action"
 ],
 engines: Object.keys(engines),
 limitations:
-"This initial engine uses programmed logic. It does not yet have an AI model, live web research, or verified external evidence."
+"This is programmed logic, not an AI model. Live research is not connected yet."
 };
 }
 
-function sendJSON(res, status, data) {
+function respond(res, status, data) {
 res.writeHead(status, {
 "Content-Type": "application/json; charset=utf-8",
 "Access-Control-Allow-Origin": "*",
 "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 "Access-Control-Allow-Headers": "Content-Type"
 });
-
 res.end(JSON.stringify(data));
 }
 
 const server = http.createServer((req, res) => {
-const url = new URL(req.url, "http://localhost");
+const path = (req.url || "/").split("?")[0];
 
 if (req.method === "OPTIONS") {
-res.writeHead(204, {
-"Access-Control-Allow-Origin": "*",
-"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-"Access-Control-Allow-Headers": "Content-Type"
-});
+res.writeHead(204);
 return res.end();
 }
 
 if (
 req.method === "GET" &&
-["/", "/api", "/api/health", "/health"].includes(url.pathname)
+["/", "/api/health", "/health"].includes(path)
 ) {
-return sendJSON(res, 200, {
+return respond(res, 200, {
 success: true,
 name: "Nova AI",
 version: "2.0.0",
@@ -117,9 +103,9 @@ message: "Nova AI backend is running."
 
 if (
 req.method === "GET" &&
-["/engines", "/api/engines"].includes(url.pathname)
+["/api/engines", "/engines"].includes(path)
 ) {
-return sendJSON(res, 200, {
+return respond(res, 200, {
 success: true,
 engines
 });
@@ -127,21 +113,17 @@ engines
 
 if (
 req.method === "POST" &&
-[
-"/api/core",
-"/api/analyze",
-"/analyze"
-].includes(url.pathname)
+["/api/core", "/api/analyze", "/analyze"].includes(path)
 ) {
 let body = "";
-let finished = false;
+let tooLarge = false;
 
 req.on("data", chunk => {
   body += chunk.toString();
 
-  if (body.length > 100000 && !finished) {
-    finished = true;
-    sendJSON(res, 413, {
+  if (body.length > 100000) {
+    tooLarge = true;
+    respond(res, 413, {
       success: false,
       message: "Request body is too large."
     });
@@ -150,18 +132,17 @@ req.on("data", chunk => {
 });
 
 req.on("end", () => {
-  if (finished) return;
+  if (tooLarge) return;
 
   try {
     const data = JSON.parse(body || "{}");
-    const result = analyze(
-      data.question || data.input || data.idea,
-      data.mode || "all"
-    );
+    const question =
+      data.question || data.input || data.idea || "";
+    const result = analyze(question, data.mode || "all");
 
-    sendJSON(res, result.success ? 200 : 400, result);
-  } catch {
-    sendJSON(res, 400, {
+    return respond(res, result.success ? 200 : 400, result);
+  } catch (error) {
+    return respond(res, 400, {
       success: false,
       message: "Invalid JSON request."
     });
@@ -172,19 +153,12 @@ return;
 
 }
 
-return sendJSON(res, 404, {
+return respond(res, 404, {
 success: false,
-message: "Endpoint not found.",
-availableEndpoints: [
-"GET /api/health",
-"POST /api/core",
-"GET /api/engines",
-"GET /health",
-"POST /analyze"
-]
+message: "Endpoint not found."
 });
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-console.log("Nova AI backend listening on port ${PORT}");
+console.log("Nova AI backend listening on port " + PORT);
 });

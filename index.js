@@ -59,8 +59,7 @@ res.writeHead(204);
 return res.end();
 }
 
-const url = new URL(req.url, "http://${req.headers.host || "localhost"}");
-
+const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 if (req.method === "GET" && url.pathname === "/") {
 res.writeHead(200);
 return res.end(JSON.stringify({

@@ -91,10 +91,7 @@ res.end(JSON.stringify(data));
 }
 
 const server = http.createServer((req, res) => {
-const url = new URL(
-req.url,
-"http://${req.headers.host || "localhost"}"
-);
+const url = new URL(req.url, "http://localhost");
 
 if (req.method === "OPTIONS") {
 res.writeHead(204, {

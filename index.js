@@ -13,6 +13,15 @@ const {
   getAllEvidence
 } = require("./evidence");
 
+const {
+  createExperiment,
+  addObservation,
+  completeExperiment,
+  getExperiment,
+  getAllExperiments,
+  searchExperiments
+} = require("./experiments");
+
 const PORT = Number(process.env.PORT) || 3000;
 
 const engines = {
@@ -29,8 +38,8 @@ const engines = {
   novaGenesis: {
     name: "Nova Genesis Engine",
     stages: [
-      "Capture an idea",
-      "Investigate existing knowledge",
+      "Capture a question",
+      "Investigate knowledge",
       "Identify knowledge gaps",
       "Design experiments",
       "Evaluate evidence",
@@ -46,6 +55,7 @@ function sendJSON(res, status, data) {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
   });
+
   res.end(JSON.stringify(data, null, 2));
 }
 
@@ -54,6 +64,7 @@ function readBody(req, callback) {
 
   req.on("data", chunk => {
     body += chunk;
+
     if (body.length > 100000) {
       req.destroy();
     }
@@ -81,7 +92,7 @@ function analyze(question, mode = "all") {
   return {
     success: true,
     name: "Nova AI",
-    version: "2.2.0",
+    version: "2.3.0",
     question,
     mode,
     engines: selectedEngines,
@@ -93,12 +104,16 @@ function analyze(question, mode = "all") {
       matches: searchEvidence(question),
       totalStored: getAllEvidence().length
     },
+    experiments: {
+      matches: searchExperiments(question),
+      totalStored: getAllExperiments().length
+    },
     nextSteps: [
       "Understand the question",
       "Review relevant knowledge",
       "Identify missing evidence",
-      "Compare possible solutions",
-      "Recommend a practical next action"
+      "Plan an experiment where appropriate",
+      "Evaluate results and recommend next actions"
     ],
     note: "Structured intelligence backend. A real AI model is not connected yet."
   };
@@ -113,68 +128,8 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, 200, {
       success: true,
       name: "Nova AI",
-      version: "2.2.0",
+      version: "2.3.0",
       status: "healthy"
-    });
-  }
-
-  if (req.method === "GET" && req.url === "/api/knowledge") {
-    return sendJSON(res, 200, {
-      success: true,
-      knowledge: getAllKnowledge()
-    });
-  }
-
-  if (req.method === "POST" && req.url === "/api/knowledge") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const entry = addKnowledge(data);
-        sendJSON(res, 201, { success: true, entry });
-      } catch (err) {
-        sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
-  }
-
-  if (req.method === "GET" && req.url === "/api/evidence") {
-    return sendJSON(res, 200, {
-      success: true,
-      evidence: getAllEvidence()
-    });
-  }
-
-  if (req.method === "POST" && req.url === "/api/evidence") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const record = evaluateEvidence(data);
-        sendJSON(res, 201, {
-          success: true,
-          record,
-          note: "Status is user-supplied and has not been independently verified."
-        });
-      } catch (err) {
-        sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
     });
   }
 
@@ -204,11 +159,186 @@ const server = http.createServer((req, res) => {
         });
       }
 
-      sendJSON(res, 200, analyze(question, mode));
+      return sendJSON(res, 200, analyze(question, mode));
     });
   }
 
-  sendJSON(res, 404, {
+  if (req.method === "GET" && req.url === "/api/knowledge") {
+    return sendJSON(res, 200, {
+      success: true,
+      knowledge: getAllKnowledge()
+    });
+  }
+
+  if (req.method === "POST" && req.url === "/api/knowledge") {
+    return readBody(req, (error, data) => {
+      if (error) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: error.message
+        });
+      }
+
+      try {
+        const entry = addKnowledge(data);
+        return sendJSON(res, 201, { success: true, entry });
+      } catch (err) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: err.message
+        });
+      }
+    });
+  }
+
+  if (req.method === "GET" && req.url === "/api/evidence") {
+    return sendJSON(res, 200, {
+      success: true,
+      evidence: getAllEvidence()
+    });
+  }
+
+  if (req.method === "POST" && req.url === "/api/evidence") {
+    return readBody(req, (error, data) => {
+      if (error) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: error.message
+        });
+      }
+
+      try {
+        const record = evaluateEvidence(data);
+        return sendJSON(res, 201, {
+          success: true,
+          record,
+          note: "The supplied status has not been independently verified."
+        });
+      } catch (err) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: err.message
+        });
+      }
+    });
+  }
+
+  if (req.method === "GET" && req.url === "/api/experiments") {
+    return sendJSON(res, 200, {
+      success: true,
+      experiments: getAllExperiments()
+    });
+  }
+
+  if (req.method === "POST" && req.url === "/api/experiments") {
+    return readBody(req, (error, data) => {
+      if (error) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: error.message
+        });
+      }
+
+      try {
+        const experiment = createExperiment(data);
+        return sendJSON(res, 201, {
+          success: true,
+          experiment
+        });
+      } catch (err) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: err.message
+        });
+      }
+    });
+  }
+
+  const observationMatch = req.url.match(
+    /^\/api\/experiments\/(\d+)\/observations$/
+  );
+
+  if (req.method === "POST" && observationMatch) {
+    return readBody(req, (error, data) => {
+      if (error) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: error.message
+        });
+      }
+
+      try {
+        const experiment = addObservation(
+          observationMatch[1],
+          data.observation
+        );
+
+        return sendJSON(res, 200, {
+          success: true,
+          experiment
+        });
+      } catch (err) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: err.message
+        });
+      }
+    });
+  }
+
+  const conclusionMatch = req.url.match(
+    /^\/api\/experiments\/(\d+)\/complete$/
+  );
+
+  if (req.method === "POST" && conclusionMatch) {
+    return readBody(req, (error, data) => {
+      if (error) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: error.message
+        });
+      }
+
+      try {
+        const experiment = completeExperiment(
+          conclusionMatch[1],
+          data.conclusion
+        );
+
+        return sendJSON(res, 200, {
+          success: true,
+          experiment
+        });
+      } catch (err) {
+        return sendJSON(res, 400, {
+          success: false,
+          error: err.message
+        });
+      }
+    });
+  }
+
+  const experimentMatch = req.url.match(
+    /^\/api\/experiments\/(\d+)$/
+  );
+
+  if (req.method === "GET" && experimentMatch) {
+    const experiment = getExperiment(experimentMatch[1]);
+
+    if (!experiment) {
+      return sendJSON(res, 404, {
+        success: false,
+        error: "Experiment not found."
+      });
+    }
+
+    return sendJSON(res, 200, {
+      success: true,
+      experiment
+    });
+  }
+
+  return sendJSON(res, 404, {
     success: false,
     error: "Endpoint not found."
   });
@@ -219,3 +349,4 @@ server.listen(PORT, "0.0.0.0", () => {
 });
 
 module.exports = { server, analyze, engines };
+  

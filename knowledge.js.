@@ -1,1 +1,70 @@
 
+const knowledgeBase = [];
+
+function addKnowledge({
+  topic,
+  content,
+  source = "User-provided",
+  confidence = "unverified",
+  tags = []
+}) {
+  if (!topic || !content) {
+    throw new Error("Topic and content are required.");
+  }
+
+  const entry = {
+    id: knowledgeBase.length + 1,
+    topic: String(topic).trim(),
+    content: String(content).trim(),
+    source: String(source).trim(),
+    confidence,
+    tags,
+    createdAt: new Date().toISOString()
+  };
+
+  knowledgeBase.push(entry);
+  return entry;
+}
+
+function searchKnowledge(query) {
+  const words = String(query)
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return [];
+
+  return knowledgeBase
+    .map(entry => {
+      const text = [
+        entry.topic,
+        entry.content,
+        ...entry.tags
+      ].join(" ").toLowerCase();
+
+      const score = words.filter(word =>
+        text.includes(word)
+      ).length;
+
+      return { ...entry, score };
+    })
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+function getAllKnowledge() {
+  return [...knowledgeBase];
+}
+
+function clearKnowledge() {
+  knowledgeBase.length = 0;
+}
+
+module.exports = {
+  addKnowledge,
+  searchKnowledge,
+  getAllKnowledge,
+  clearKnowledge
+};
+

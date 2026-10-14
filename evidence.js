@@ -1,4 +1,3 @@
-
 const evidenceRecords = [];
 
 function evaluateEvidence({
@@ -24,8 +23,13 @@ function evaluateEvidence({
     throw new Error("Invalid evidence type.");
   }
 
+  const nextId = Math.max(
+    0,
+    ...evidenceRecords.map(item => Number(item.id) || 0)
+  ) + 1;
+
   const record = {
-    id: evidenceRecords.length + 1,
+    id: nextId,
     claim: String(claim).trim(),
     source: String(source).trim(),
     evidence: String(evidence).trim(),
@@ -39,7 +43,6 @@ function evaluateEvidence({
 
 function searchEvidence(query) {
   const term = String(query || "").toLowerCase().trim();
-
   if (!term) return [];
 
   return evidenceRecords.filter(record =>
@@ -48,7 +51,9 @@ function searchEvidence(query) {
       record.source,
       record.evidence,
       record.status
-    ].some(value => value.toLowerCase().includes(term))
+    ].some(value =>
+      String(value).toLowerCase().includes(term)
+    )
   );
 }
 
@@ -56,9 +61,23 @@ function getAllEvidence() {
   return [...evidenceRecords];
 }
 
+function loadEvidence(entries) {
+  if (!Array.isArray(entries)) {
+    throw new Error("Evidence data must be an array.");
+  }
+
+  evidenceRecords.splice(
+    0,
+    evidenceRecords.length,
+    ...entries
+  );
+
+  return getAllEvidence();
+}
+
 module.exports = {
   evaluateEvidence,
   searchEvidence,
-  getAllEvidence
+  getAllEvidence,
+  loadEvidence
 };
-    

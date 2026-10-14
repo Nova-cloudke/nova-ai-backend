@@ -21,7 +21,7 @@ function saveData(name, data) {
 ensureDataDirectory();
 
 const filePath = getFilePath(name);
-const temporaryPath = ${filePath}.tmp;
+const temporaryPath = `${filePath}.tmp`;
 
 fs.writeFileSync(
 temporaryPath,

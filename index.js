@@ -37,9 +37,9 @@ function restoreData() {
   experiments.loadExperiments(storage.loadData("experiments"));
 }
 
-function persist(name, getData) {
-  return storage.saveData(name, getData());
-}
+function persist(name, data) {
+  return storage.saveData(name, data);
+    }
 
 function send(res, status, data) {
   res.writeHead(status, {

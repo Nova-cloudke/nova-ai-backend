@@ -50,7 +50,7 @@ return [];
 try {
 return JSON.parse(fs.readFileSync(filePath, "utf8"));
 } catch {
-throw new Error(Stored data for "${name}" is invalid.);
+throw new Error(`Stored data for "${name}" is invalid.`);
 }
 }
 

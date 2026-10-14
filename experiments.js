@@ -1,4 +1,3 @@
-
 const experiments = [];
 
 function createExperiment({
@@ -13,8 +12,13 @@ function createExperiment({
     );
   }
 
+  const nextId = Math.max(
+    0,
+    ...experiments.map(item => Number(item.id) || 0)
+  ) + 1;
+
   const experiment = {
-    id: experiments.length + 1,
+    id: nextId,
     question: String(question).trim(),
     hypothesis: String(hypothesis).trim(),
     method: String(method).trim(),
@@ -30,9 +34,7 @@ function createExperiment({
 }
 
 function addObservation(id, observation) {
-  const experiment = experiments.find(
-    item => item.id === Number(id)
-  );
+  const experiment = getExperiment(id);
 
   if (!experiment) {
     throw new Error("Experiment not found.");
@@ -42,21 +44,17 @@ function addObservation(id, observation) {
     throw new Error("An observation is required.");
   }
 
-  const record = {
+  experiment.observations.push({
     observation: String(observation).trim(),
     recordedAt: new Date().toISOString()
-  };
+  });
 
-  experiment.observations.push(record);
   experiment.status = "in_progress";
-
   return experiment;
 }
 
 function completeExperiment(id, conclusion) {
-  const experiment = experiments.find(
-    item => item.id === Number(id)
-  );
+  const experiment = getExperiment(id);
 
   if (!experiment) {
     throw new Error("Experiment not found.");
@@ -80,12 +78,14 @@ function getExperiment(id) {
 }
 
 function getAllExperiments() {
-  return experiments.map(item => ({ ...item }));
+  return experiments.map(item => ({
+    ...item,
+    observations: [...item.observations]
+  }));
 }
 
 function searchExperiments(query) {
   const term = String(query || "").toLowerCase().trim();
-
   if (!term) return [];
 
   return experiments.filter(item =>
@@ -95,8 +95,24 @@ function searchExperiments(query) {
       item.method,
       item.expectedOutcome,
       item.conclusion || ""
-    ].some(value => value.toLowerCase().includes(term))
+    ].some(value =>
+      String(value).toLowerCase().includes(term)
+    )
   );
+}
+
+function loadExperiments(entries) {
+  if (!Array.isArray(entries)) {
+    throw new Error("Experiment data must be an array.");
+  }
+
+  experiments.splice(
+    0,
+    experiments.length,
+    ...entries
+  );
+
+  return getAllExperiments();
 }
 
 module.exports = {
@@ -105,6 +121,6 @@ module.exports = {
   completeExperiment,
   getExperiment,
   getAllExperiments,
-  searchExperiments
+  searchExperiments,
+  loadExperiments
 };
-  

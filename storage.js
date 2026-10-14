@@ -14,7 +14,7 @@ if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
 throw new Error("Invalid storage name.");
 }
 
-return path.join(DATA_DIR, ${name}.json);
+return path.join(DATA_DIR, `${name}.json`);
 }
 
 function saveData(name, data) {

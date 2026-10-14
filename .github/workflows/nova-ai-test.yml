@@ -1,4 +1,3 @@
-
 name: Test Nova AI
 
 on:
@@ -18,20 +17,26 @@ jobs:
         with:
           node-version: '20'
 
-      
-      - name: Start Nova AI backend
+      - name: Check JavaScript files
         run: |
           node --check index.js
+          node --check storage.js
+          node --check experiments.js
+          node --check knowledge.js
+          node --check evidence.js
+
+      - name: Start Nova AI backend
+        run: |
           node index.js > server.log 2>&1 &
           echo $! > server.pid
 
-      - name: Wait for server and test
+      - name: Wait for server
         run: |
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3000/api/health > health.json; then
               echo "Nova AI started successfully."
               cat health.json
-              break
+              exit 0
             fi
 
             if ! kill -0 "$(cat server.pid)" 2>/dev/null; then
@@ -43,22 +48,30 @@ jobs:
             sleep 1
           done
 
-          if [ ! -s health.json ]; then
-            echo "Nova AI failed to start within 30 seconds."
-            cat server.log
-            exit 1
-          fi
+          echo "Nova AI failed to start."
+          cat server.log
+          exit 1
 
-          curl --fail-with-body -sS -X POST \
-            http://127.0.0.1:3000/api/core \
+      - name: Test core endpoint
+        run: |
+          curl --fail-with-body -sS \
+            -X POST http://127.0.0.1:3000/api/core \
             -H "Content-Type: application/json" \
-            -d '{"question":"Test Nova AI","mode":"all"}'
+            -d '{"question":"Test Nova AI","mode":"all"}' \
+            -o core.json
 
-      - name: Show server logs if test fails
+          node -e "
+            const r = require('./core.json');
+            if (!r.success || !r.result || !r.result.opportunityDiscovery || !r.result.novaGenesis) {
+              console.error('Core endpoint response is invalid:', r);
+              process.exit(1);
+            }
+            console.log('Core endpoint passed.');
+          "
+
+      - name: Show logs if test fails
         if: failure()
         run: |
           if [ -f server.log ]; then
             cat server.log
           fi
-          
-          

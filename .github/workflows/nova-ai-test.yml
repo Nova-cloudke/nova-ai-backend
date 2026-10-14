@@ -18,28 +18,47 @@ jobs:
         with:
           node-version: '20'
 
+      
       - name: Start Nova AI backend
         run: |
+          node --check index.js
           node index.js > server.log 2>&1 &
           echo $! > server.pid
 
       - name: Wait for server and test
         run: |
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3000/api/health; then
+            if curl -fsS http://127.0.0.1:3000/api/health > health.json; then
+              echo "Nova AI started successfully."
+              cat health.json
               break
             fi
+
+            if ! kill -0 "$(cat server.pid)" 2>/dev/null; then
+              echo "Nova AI stopped unexpectedly."
+              cat server.log
+              exit 1
+            fi
+
             sleep 1
           done
 
-          curl -fsS http://127.0.0.1:3000/api/health
+          if [ ! -s health.json ]; then
+            echo "Nova AI failed to start within 30 seconds."
+            cat server.log
+            exit 1
+          fi
 
-          curl -fsS -X POST \
+          curl --fail-with-body -sS -X POST \
             http://127.0.0.1:3000/api/core \
             -H "Content-Type: application/json" \
             -d '{"question":"Test Nova AI","mode":"all"}'
 
       - name: Show server logs if test fails
         if: failure()
-        run: cat server.log
-        
+        run: |
+          if [ -f server.log ]; then
+            cat server.log
+          fi
+          
+          

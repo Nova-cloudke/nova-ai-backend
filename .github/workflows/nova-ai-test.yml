@@ -34,21 +34,15 @@ jobs:
         run: |
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3000/api/health > health.json; then
-              echo "Nova AI started successfully."
               cat health.json
               exit 0
             fi
-
             if ! kill -0 "$(cat server.pid)" 2>/dev/null; then
-              echo "Nova AI stopped unexpectedly."
               cat server.log
               exit 1
             fi
-
             sleep 1
           done
-
-          echo "Nova AI failed to start."
           cat server.log
           exit 1
 
@@ -62,16 +56,51 @@ jobs:
 
           node -e "
             const r = require('./core.json');
-            if (!r.success || !r.result || !r.result.opportunityDiscovery || !r.result.novaGenesis) {
-              console.error('Core endpoint response is invalid:', r);
-              process.exit(1);
-            }
-            console.log('Core endpoint passed.');
+            if (!r.success || !r.result.opportunityDiscovery || !r.result.novaGenesis) process.exit(1);
+            console.log('Core test passed.');
           "
 
-      - name: Show logs if test fails
-        if: failure()
+      - name: Test experiment features
         run: |
-          if [ -f server.log ]; then
-            cat server.log
-          fi
+          curl --fail-with-body -sS \
+            -X POST http://127.0.0.1:3000/api/experiments \
+            -H "Content-Type: application/json" \
+            -d '{"question":"Test experiment","hypothesis":"The feature works","method":"Run automated test","expectedOutcome":"All routes pass"}' \
+            -o experiment.json
+
+          node -e "
+            const r = require('./experiment.json');
+            if (!r.success || !r.record || !r.record.id) process.exit(1);
+            require('fs').writeFileSync('experiment-id.txt', String(r.record.id));
+            console.log('Create experiment: PASSED');
+          "
+
+          ID=$(cat experiment-id.txt)
+
+          curl --fail-with-body -sS \
+            -X POST "http://127.0.0.1:3000/api/experiments/$ID/observations" \
+            -H "Content-Type: application/json" \
+            -d '{"observation":"Automated observation recorded"}' \
+            -o observation.json
+
+          node -e "
+            const r = require('./observation.json');
+            if (!r.success || !r.record || !r.record.observations.length) process.exit(1);
+            console.log('Add observation: PASSED');
+          "
+
+          curl --fail-with-body -sS \
+            -X POST "http://127.0.0.1:3000/api/experiments/$ID/complete" \
+            -H "Content-Type: application/json" \
+            -d '{"conclusion":"Experiment test passed"}' \
+            -o completion.json
+
+          node -e "
+            const r = require('./completion.json');
+            if (!r.success || !r.record || r.record.status !== 'completed') process.exit(1);
+            console.log('Complete experiment: PASSED');
+          "
+
+      - name: Show server logs if test fails
+        if: failure()
+        run: cat server.log

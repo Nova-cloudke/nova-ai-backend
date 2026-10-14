@@ -1,75 +1,73 @@
-
 const fs = require("fs");
 const path = require("path");
 
 const DATA_DIR = path.join(__dirname, "data");
 
 function ensureDataDirectory() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+if (!fs.existsSync(DATA_DIR)) {
+fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 }
 
 function getFilePath(name) {
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    throw new Error("Invalid storage name.");
-  }
+if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+throw new Error("Invalid storage name.");
+}
 
-  return path.join(DATA_DIR, `${name}.json`);
+return path.join(DATA_DIR, ${name}.json);
 }
 
 function saveData(name, data) {
-  ensureDataDirectory();
+ensureDataDirectory();
 
-  const filePath = getFilePath(name);
-  const temporaryPath = `${filePath}.tmp`;
+const filePath = getFilePath(name);
+const temporaryPath = ${filePath}.tmp;
 
-  fs.writeFileSync(
-    temporaryPath,
-    JSON.stringify(data, null, 2),
-    "utf8"
-  );
+fs.writeFileSync(
+temporaryPath,
+JSON.stringify(data, null, 2),
+"utf8"
+);
 
-  fs.renameSync(temporaryPath, filePath);
+fs.renameSync(temporaryPath, filePath);
 
-  return {
-    success: true,
-    name,
-    savedAt: new Date().toISOString()
-  };
+return {
+success: true,
+name,
+savedAt: new Date().toISOString()
+};
 }
 
 function loadData(name) {
-  ensureDataDirectory();
+ensureDataDirectory();
 
-  const filePath = getFilePath(name);
+const filePath = getFilePath(name);
 
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
+if (!fs.existsSync(filePath)) {
+return [];
+}
 
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    throw new Error(`Stored data for "${name}" is invalid.`);
-  }
+try {
+return JSON.parse(fs.readFileSync(filePath, "utf8"));
+} catch {
+throw new Error(Stored data for "${name}" is invalid.);
+}
 }
 
 function deleteData(name) {
-  ensureDataDirectory();
+ensureDataDirectory();
 
-  const filePath = getFilePath(name);
+const filePath = getFilePath(name);
 
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
+if (fs.existsSync(filePath)) {
+fs.unlinkSync(filePath);
+}
 
-  return { success: true, name };
+return { success: true, name };
 }
 
 module.exports = {
-  saveData,
-  loadData,
-  deleteData
+saveData,
+loadData,
+deleteData
 };
-    

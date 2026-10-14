@@ -1,4 +1,3 @@
-
 const knowledgeBase = [];
 
 function addKnowledge({
@@ -12,8 +11,13 @@ function addKnowledge({
     throw new Error("Topic and content are required.");
   }
 
+  const nextId = Math.max(
+    0,
+    ...knowledgeBase.map(item => Number(item.id) || 0)
+  ) + 1;
+
   const entry = {
-    id: knowledgeBase.length + 1,
+    id: nextId,
     topic: String(topic).trim(),
     content: String(content).trim(),
     source: String(source).trim(),
@@ -27,7 +31,7 @@ function addKnowledge({
 }
 
 function searchKnowledge(query) {
-  const words = String(query)
+  const words = String(query || "")
     .toLowerCase()
     .trim()
     .split(/\s+/)
@@ -40,7 +44,7 @@ function searchKnowledge(query) {
       const text = [
         entry.topic,
         entry.content,
-        ...entry.tags
+        ...(entry.tags || [])
       ].join(" ").toLowerCase();
 
       const score = words.filter(word =>
@@ -57,6 +61,15 @@ function getAllKnowledge() {
   return [...knowledgeBase];
 }
 
+function loadKnowledge(entries) {
+  if (!Array.isArray(entries)) {
+    throw new Error("Knowledge data must be an array.");
+  }
+
+  knowledgeBase.splice(0, knowledgeBase.length, ...entries);
+  return getAllKnowledge();
+}
+
 function clearKnowledge() {
   knowledgeBase.length = 0;
 }
@@ -65,6 +78,6 @@ module.exports = {
   addKnowledge,
   searchKnowledge,
   getAllKnowledge,
+  loadKnowledge,
   clearKnowledge
 };
-

@@ -4,6 +4,7 @@ const http = require("http");
 const knowledge = require("./knowledge");
 const evidence = require("./evidence");
 const experiments = require("./experiments");
+const storage = require("./storage");
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -38,6 +39,7 @@ function sendJSON(res, status, data) {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
   });
+
   res.end(JSON.stringify(data, null, 2));
 }
 
@@ -63,6 +65,10 @@ function readBody(req, callback) {
   req.on("error", error => callback(error));
 }
 
+function persist(name, getter) {
+  return storage.saveData(name, getter());
+}
+
 function analyze(question, mode = "all") {
   let selectedEngines = engines;
 
@@ -81,7 +87,7 @@ function analyze(question, mode = "all") {
   return {
     success: true,
     name: "Nova AI",
-    version: "2.3.0",
+    version: "2.4.0",
     question,
     mode,
     engines: selectedEngines,
@@ -104,64 +110,35 @@ function analyze(question, mode = "all") {
       "Plan an experiment where appropriate",
       "Evaluate results and recommend next actions"
     ],
-    note: "Structured intelligence backend. An AI model is not connected yet."
+    note: "Structured intelligence backend. A real AI model is not connected yet."
   };
 }
 
 const server = http.createServer((req, res) => {
-  const path = req.url.split("?")[0];
+  const route = req.url.split("?")[0];
 
   if (req.method === "OPTIONS") {
     return sendJSON(res, 200, { success: true });
   }
 
-  if (req.method === "GET" && path === "/api/health") {
+  if (req.method === "GET" && route === "/api/health") {
     return sendJSON(res, 200, {
       success: true,
       name: "Nova AI",
-      version: "2.3.0",
-      status: "healthy"
+      version: "2.4.0",
+      status: "healthy",
+      storage: "file-based"
     });
   }
 
-  if (req.method === "POST" && path === "/api/core") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      const question = String(data.question || "").trim();
-      const mode = data.mode || "all";
-
-      if (!question) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: "A question is required."
-        });
-      }
-
-      if (!["all", "opportunity", "genesis"].includes(mode)) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: "Mode must be all, opportunity, or genesis."
-        });
-      }
-
-      return sendJSON(res, 200, analyze(question, mode));
-    });
-  }
-
-  if (req.method === "GET" && path === "/api/knowledge") {
+  if (req.method === "GET" && route === "/api/knowledge") {
     return sendJSON(res, 200, {
       success: true,
       knowledge: knowledge.getAllKnowledge()
     });
   }
 
-  if (req.method === "POST" && path === "/api/knowledge") {
+  if (req.method === "POST" && route === "/api/knowledge") {
     return readBody(req, (error, data) => {
       if (error) {
         return sendJSON(res, 400, {
@@ -172,6 +149,7 @@ const server = http.createServer((req, res) => {
 
       try {
         const entry = knowledge.addKnowledge(data);
+        persist("knowledge", knowledge.getAllKnowledge());
         return sendJSON(res, 201, { success: true, entry });
       } catch (err) {
         return sendJSON(res, 400, {
@@ -182,14 +160,14 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  if (path === "/api/evidence" && req.method === "GET") {
+  if (req.method === "GET" && route === "/api/evidence") {
     return sendJSON(res, 200, {
       success: true,
       evidence: evidence.getAllEvidence()
     });
   }
 
-  if (path === "/api/evidence" && req.method === "POST") {
+  if (req.method === "POST" && route === "/api/evidence") {
     return readBody(req, (error, data) => {
       if (error) {
         return sendJSON(res, 400, {
@@ -200,6 +178,7 @@ const server = http.createServer((req, res) => {
 
       try {
         const record = evidence.evaluateEvidence(data);
+        persist("evidence", evidence.getAllEvidence());
         return sendJSON(res, 201, {
           success: true,
           record,
@@ -214,14 +193,14 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  if (path === "/api/experiments" && req.method === "GET") {
+  if (req.method === "GET" && route === "/api/experiments") {
     return sendJSON(res, 200, {
       success: true,
       experiments: experiments.getAllExperiments()
     });
   }
 
-  if (path === "/api/experiments" && req.method === "POST") {
+  if (req.method === "POST" && route === "/api/experiments") {
     return readBody(req, (error, data) => {
       if (error) {
         return sendJSON(res, 400, {
@@ -232,6 +211,7 @@ const server = http.createServer((req, res) => {
 
       try {
         const experiment = experiments.createExperiment(data);
+        persist("experiments", experiments.getAllExperiments());
         return sendJSON(res, 201, {
           success: true,
           experiment
@@ -245,7 +225,7 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  const observationMatch = path.match(
+  const observationMatch = route.match(
     /^\/api\/experiments\/(\d+)\/observations$/
   );
 
@@ -263,6 +243,7 @@ const server = http.createServer((req, res) => {
           observationMatch[1],
           data.observation
         );
+        persist("experiments", experiments.getAllExperiments());
         return sendJSON(res, 200, { success: true, experiment });
       } catch (err) {
         return sendJSON(res, 400, {
@@ -273,7 +254,7 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  const completeMatch = path.match(
+  const completeMatch = route.match(
     /^\/api\/experiments\/(\d+)\/complete$/
   );
 
@@ -291,6 +272,7 @@ const server = http.createServer((req, res) => {
           completeMatch[1],
           data.conclusion
         );
+        persist("experiments", experiments.getAllExperiments());
         return sendJSON(res, 200, { success: true, experiment });
       } catch (err) {
         return sendJSON(res, 400, {
@@ -301,12 +283,14 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  const experimentMatch = path.match(
+  const experimentMatch = route.match(
     /^\/api\/experiments\/(\d+)$/
   );
 
   if (req.method === "GET" && experimentMatch) {
-    const experiment = experiments.getExperiment(experimentMatch[1]);
+    const experiment = experiments.getExperiment(
+      experimentMatch[1]
+    );
 
     if (!experiment) {
       return sendJSON(res, 404, {
@@ -332,3 +316,4 @@ server.listen(PORT, "0.0.0.0", () => {
 });
 
 module.exports = { server, analyze, engines };
+  

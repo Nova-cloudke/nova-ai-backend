@@ -1,6 +1,4 @@
-
 const http = require("http");
-
 const knowledge = require("./knowledge");
 const evidence = require("./evidence");
 const experiments = require("./experiments");
@@ -22,17 +20,28 @@ const engines = {
   novaGenesis: {
     name: "Nova Genesis Engine",
     stages: [
-      "Capture a question",
-      "Investigate knowledge",
-      "Identify knowledge gaps",
+      "Capture an idea",
+      "Understand its purpose",
+      "Investigate existing knowledge",
+      "Identify unanswered questions",
       "Design experiments",
       "Evaluate evidence",
-      "Develop potential solutions"
+      "Develop possible solutions"
     ]
   }
 };
 
-function sendJSON(res, status, data) {
+function restoreData() {
+  knowledge.loadKnowledge(storage.loadData("knowledge"));
+  evidence.loadEvidence(storage.loadData("evidence"));
+  experiments.loadExperiments(storage.loadData("experiments"));
+}
+
+function persist(name, getData) {
+  return storage.saveData(name, getData());
+}
+
+function send(res, status, data) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
@@ -40,280 +49,232 @@ function sendJSON(res, status, data) {
     "Access-Control-Allow-Headers": "Content-Type"
   });
 
-  res.end(JSON.stringify(data, null, 2));
+  res.end(JSON.stringify(data));
 }
 
-function readBody(req, callback) {
-  let body = "";
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let size = 0;
 
-  req.on("data", chunk => {
-    body += chunk;
+    req.on("data", chunk => {
+      size += chunk.length;
 
-    if (body.length > 100000) {
-      req.destroy();
-    }
+      if (size > 1_000_000) {
+        reject(new Error("Request body is too large."));
+        req.destroy();
+        return;
+      }
+
+      body += chunk;
+    });
+
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+
+    req.on("error", reject);
   });
-
-  req.on("end", () => {
-    try {
-      callback(null, JSON.parse(body || "{}"));
-    } catch {
-      callback(new Error("Invalid JSON request."));
-    }
-  });
-
-  req.on("error", error => callback(error));
-}
-
-function persist(name, getter) {
-  return storage.saveData(name, getter());
 }
 
 function analyze(question, mode = "all") {
-  let selectedEngines = engines;
-
-  if (mode === "opportunity") {
-    selectedEngines = {
-      opportunityDiscovery: engines.opportunityDiscovery
-    };
+  if (!question || !String(question).trim()) {
+    throw new Error("A question is required.");
   }
 
-  if (mode === "genesis") {
-    selectedEngines = {
-      novaGenesis: engines.novaGenesis
-    };
-  }
+  const text = String(question).trim();
 
-  return {
-    success: true,
-    name: "Nova AI",
-    version: "2.4.0",
-    question,
+  const result = {
+    question: text,
     mode,
-    engines: selectedEngines,
-    knowledge: {
-      matches: knowledge.searchKnowledge(question),
-      totalStored: knowledge.getAllKnowledge().length
-    },
-    evidence: {
-      matches: evidence.searchEvidence(question),
-      totalStored: evidence.getAllEvidence().length
-    },
-    experiments: {
-      matches: experiments.searchExperiments(question),
-      totalStored: experiments.getAllExperiments().length
-    },
-    nextSteps: [
-      "Understand the question",
-      "Review relevant knowledge",
-      "Identify missing evidence",
-      "Plan an experiment where appropriate",
-      "Evaluate results and recommend next actions"
-    ],
-    note: "Structured intelligence backend. A real AI model is not connected yet."
+    version: "2.5.0",
+    notice: "Structured analysis only. No AI model is connected yet."
   };
+
+  if (mode === "all" || mode === "opportunity") {
+    result.opportunityDiscovery = {
+      engine: engines.opportunityDiscovery.name,
+      stages: engines.opportunityDiscovery.stages,
+      nextStep: "Identify the people affected and their unmet needs."
+    };
+  }
+
+  if (mode === "all" || mode === "genesis") {
+    result.novaGenesis = {
+      engine: engines.novaGenesis.name,
+      stages: engines.novaGenesis.stages,
+      nextStep: "Review existing knowledge and identify what remains unknown."
+    };
+  }
+
+  result.relatedKnowledge = knowledge.searchKnowledge(text);
+  result.relatedEvidence = evidence.searchEvidence(text);
+  result.relatedExperiments = experiments.searchExperiments(text);
+
+  return result;
 }
 
-const server = http.createServer((req, res) => {
-  const route = req.url.split("?")[0];
-
+async function handle(req, res) {
   if (req.method === "OPTIONS") {
-    return sendJSON(res, 200, { success: true });
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    });
+    return res.end();
   }
 
-  if (req.method === "GET" && route === "/api/health") {
-    return sendJSON(res, 200, {
+  const url = new URL(req.url, "http://localhost");
+  const path = url.pathname;
+  const method = req.method;
+
+  if (method === "GET" && path === "/") {
+    return send(res, 200, {
+      name: "Nova AI",
+      message: "Nova AI backend is running.",
+      health: "/api/health"
+    });
+  }
+
+  if (method === "GET" && path === "/api/health") {
+    return send(res, 200, {
       success: true,
       name: "Nova AI",
-      version: "2.4.0",
+      version: "2.5.0",
       status: "healthy",
-      storage: "file-based"
+      engines: Object.keys(engines)
     });
   }
 
-  if (req.method === "GET" && route === "/api/knowledge") {
-    return sendJSON(res, 200, {
+  if (method === "POST" && path === "/api/core") {
+    const body = await readBody(req);
+    const result = analyze(body.question, body.mode || "all");
+    return send(res, 200, { success: true, result });
+  }
+
+  if (path === "/api/knowledge" && method === "GET") {
+    const query = url.searchParams.get("q");
+    return send(res, 200, {
       success: true,
-      knowledge: knowledge.getAllKnowledge()
+      records: query
+        ? knowledge.searchKnowledge(query)
+        : knowledge.getAllKnowledge()
     });
   }
 
-  if (req.method === "POST" && route === "/api/knowledge") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const entry = knowledge.addKnowledge(data);
-        persist("knowledge", knowledge.getAllKnowledge());
-        return sendJSON(res, 201, { success: true, entry });
-      } catch (err) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
+  if (path === "/api/knowledge" && method === "POST") {
+    const body = await readBody(req);
+    const record = knowledge.addKnowledge(body);
+    persist("knowledge", knowledge.getAllKnowledge());
+    return send(res, 201, { success: true, record });
   }
 
-  if (req.method === "GET" && route === "/api/evidence") {
-    return sendJSON(res, 200, {
+  if (path === "/api/evidence" && method === "GET") {
+    const query = url.searchParams.get("q");
+    return send(res, 200, {
       success: true,
-      evidence: evidence.getAllEvidence()
+      records: query
+        ? evidence.searchEvidence(query)
+        : evidence.getAllEvidence()
     });
   }
 
-  if (req.method === "POST" && route === "/api/evidence") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const record = evidence.evaluateEvidence(data);
-        persist("evidence", evidence.getAllEvidence());
-        return sendJSON(res, 201, {
-          success: true,
-          record,
-          note: "The supplied status has not been independently verified."
-        });
-      } catch (err) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
+  if (path === "/api/evidence" && method === "POST") {
+    const body = await readBody(req);
+    const record = evidence.evaluateEvidence(body);
+    persist("evidence", evidence.getAllEvidence());
+    return send(res, 201, { success: true, record });
   }
 
-  if (req.method === "GET" && route === "/api/experiments") {
-    return sendJSON(res, 200, {
+  if (path === "/api/experiments" && method === "GET") {
+    const query = url.searchParams.get("q");
+    return send(res, 200, {
       success: true,
-      experiments: experiments.getAllExperiments()
+      records: query
+        ? experiments.searchExperiments(query)
+        : experiments.getAllExperiments()
     });
   }
 
-  if (req.method === "POST" && route === "/api/experiments") {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const experiment = experiments.createExperiment(data);
-        persist("experiments", experiments.getAllExperiments());
-        return sendJSON(res, 201, {
-          success: true,
-          experiment
-        });
-      } catch (err) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
+  if (path === "/api/experiments" && method === "POST") {
+    const body = await readBody(req);
+    const record = experiments.createExperiment(body);
+    persist("experiments", experiments.getAllExperiments());
+    return send(res, 201, { success: true, record });
   }
 
-  const observationMatch = route.match(
-    /^\/api\/experiments\/(\d+)\/observations$/
-  );
+  let match = path.match(/^\/api\/experiments\/(\d+)$/);
 
-  if (req.method === "POST" && observationMatch) {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const experiment = experiments.addObservation(
-          observationMatch[1],
-          data.observation
-        );
-        persist("experiments", experiments.getAllExperiments());
-        return sendJSON(res, 200, { success: true, experiment });
-      } catch (err) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
-  }
-
-  const completeMatch = route.match(
-    /^\/api\/experiments\/(\d+)\/complete$/
-  );
-
-  if (req.method === "POST" && completeMatch) {
-    return readBody(req, (error, data) => {
-      if (error) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: error.message
-        });
-      }
-
-      try {
-        const experiment = experiments.completeExperiment(
-          completeMatch[1],
-          data.conclusion
-        );
-        persist("experiments", experiments.getAllExperiments());
-        return sendJSON(res, 200, { success: true, experiment });
-      } catch (err) {
-        return sendJSON(res, 400, {
-          success: false,
-          error: err.message
-        });
-      }
-    });
-  }
-
-  const experimentMatch = route.match(
-    /^\/api\/experiments\/(\d+)$/
-  );
-
-  if (req.method === "GET" && experimentMatch) {
-    const experiment = experiments.getExperiment(
-      experimentMatch[1]
-    );
-
-    if (!experiment) {
-      return sendJSON(res, 404, {
+  if (match && method === "GET") {
+    const record = experiments.getExperiment(match[1]);
+    if (!record) {
+      return send(res, 404, {
         success: false,
         error: "Experiment not found."
       });
     }
-
-    return sendJSON(res, 200, {
-      success: true,
-      experiment
-    });
+    return send(res, 200, { success: true, record });
   }
 
-  return sendJSON(res, 404, {
+  match = path.match(
+    /^\/api\/experiments\/(\d+)\/observations$/
+  );
+
+  if (match && method === "POST") {
+    const body = await readBody(req);
+    const record = experiments.addObservation(
+      match[1],
+      body.observation
+    );
+    persist("experiments", experiments.getAllExperiments());
+    return send(res, 200, { success: true, record });
+  }
+
+  match = path.match(
+    /^\/api\/experiments\/(\d+)\/complete$/
+  );
+
+  if (match && method === "POST") {
+    const body = await readBody(req);
+    const record = experiments.completeExperiment(
+      match[1],
+      body.conclusion
+    );
+    persist("experiments", experiments.getAllExperiments());
+    return send(res, 200, { success: true, record });
+  }
+
+  return send(res, 404, {
     success: false,
     error: "Endpoint not found."
   });
+}
+
+const server = http.createServer((req, res) => {
+  handle(req, res).catch(error => {
+    const status = error.message === "Invalid JSON body." ||
+      error.message === "Request body is too large."
+      ? 400
+      : 400;
+
+    send(res, status, {
+      success: false,
+      error: error.message || "Request failed."
+    });
+  });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Nova AI V2 running on port ${PORT}`);
-});
+try {
+  restoreData();
 
-module.exports = { server, analyze, engines };
-  
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Nova AI v2.5.0 running on port ${PORT}`);
+  });
+} catch (error) {
+  console.error("Nova AI startup failed:", error.message);
+  process.exit(1);
+}

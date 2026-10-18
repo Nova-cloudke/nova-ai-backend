@@ -1,3 +1,4 @@
+
 const http = require("http");
 const knowledge = require("./knowledge");
 const evidence = require("./evidence");
@@ -5,6 +6,8 @@ const experiments = require("./experiments");
 const storage = require("./storage");
 
 const PORT = Number(process.env.PORT) || 3000;
+const VERSION = "2.6.0";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
 const engines = {
   opportunityDiscovery: {
@@ -39,7 +42,7 @@ function restoreData() {
 
 function persist(name, data) {
   return storage.saveData(name, data);
-    }
+}
 
 function send(res, status, data) {
   res.writeHead(status, {
@@ -91,8 +94,7 @@ function analyze(question, mode = "all") {
   const result = {
     question: text,
     mode,
-    version: "2.5.0",
-    notice: "Structured analysis only. No AI model is connected yet."
+    version: VERSION
   };
 
   if (mode === "all" || mode === "opportunity") {
@@ -116,6 +118,107 @@ function analyze(question, mode = "all") {
   result.relatedExperiments = experiments.searchExperiments(text);
 
   return result;
+}
+
+async function generateAI(question, mode, context) {
+  if (!process.env.OPENAI_API_KEY) {
+    const error = new Error(
+      "OpenAI API key is not configured on the server."
+    );
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const instructions = `
+You are Nova AI, the intelligence system inside Nova Cloud.
+
+Your purpose is to turn questions, ideas and confusion into clear
+understanding and practical action.
+
+For each request:
+1. Understand the actual question and the user's objective.
+2. Explain the subject clearly and specifically.
+3. Separate established facts from assumptions and unknowns.
+4. Identify problems, unmet needs, opportunities and alternatives
+   when relevant to the question.
+5. Use supplied Nova knowledge, evidence and experiments where useful.
+6. Recommend practical next actions.
+7. Never invent evidence, research findings, statistics or sources.
+8. State when current external research is needed but unavailable.
+9. Adapt the response to the question instead of forcing every topic
+   into a generic business template.
+
+For opportunity discovery, investigate problems, affected people,
+unmet needs, potential solutions and ways to validate demand.
+
+For Nova Genesis, explore the idea, existing knowledge, unanswered
+questions, experiments, evidence and possible solutions.
+
+Requested mode: ${mode}
+
+Return a useful, readable answer with headings or lists when helpful.
+`;
+
+  const response = await fetch(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        instructions,
+        input: JSON.stringify({
+          question,
+          mode,
+          existingNovaData: context
+        })
+      }),
+      signal: AbortSignal.timeout(60000)
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error(
+      "OpenAI request failed:",
+      response.status,
+      data.error?.message || "Unknown API error"
+    );
+
+    const error = new Error(
+      response.status === 401
+        ? "OpenAI authentication failed. Check the API key in Render."
+        : response.status === 429
+        ? "OpenAI request limit or quota reached. Check API billing and limits."
+        : `OpenAI request failed with status ${response.status}.`
+    );
+
+    error.statusCode =
+      response.status === 429 ? 429 : 502;
+
+    throw error;
+  }
+
+  const answer = (data.output || [])
+    .flatMap(item => item.content || [])
+    .filter(item => item.type === "output_text")
+    .map(item => item.text)
+    .join("\n")
+    .trim();
+
+  if (!answer) {
+    throw new Error("OpenAI returned no text answer.");
+  }
+
+  return {
+    model: data.model || OPENAI_MODEL,
+    answer,
+    responseId: data.id
+  };
 }
 
 async function handle(req, res) {
@@ -144,20 +247,49 @@ async function handle(req, res) {
     return send(res, 200, {
       success: true,
       name: "Nova AI",
-      version: "2.5.0",
+      version: VERSION,
       status: "healthy",
-      engines: Object.keys(engines)
+      engines: Object.keys(engines),
+      aiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      aiModel: OPENAI_MODEL
     });
   }
 
   if (method === "POST" && path === "/api/core") {
     const body = await readBody(req);
-    const result = analyze(body.question, body.mode || "all");
-    return send(res, 200, { success: true, result });
+    const question = String(body.question || "").trim();
+    const mode = body.mode || "all";
+
+    if (!question) {
+      return send(res, 400, {
+        success: false,
+        error: "A question is required."
+      });
+    }
+
+    const result = analyze(question, mode);
+
+    result.ai = await generateAI(
+      question,
+      mode,
+      {
+        knowledge: result.relatedKnowledge,
+        evidence: result.relatedEvidence,
+        experiments: result.relatedExperiments
+      }
+    );
+
+    result.notice = "AI-powered analysis completed.";
+
+    return send(res, 200, {
+      success: true,
+      result
+    });
   }
 
   if (path === "/api/knowledge" && method === "GET") {
     const query = url.searchParams.get("q");
+
     return send(res, 200, {
       success: true,
       records: query
@@ -169,12 +301,15 @@ async function handle(req, res) {
   if (path === "/api/knowledge" && method === "POST") {
     const body = await readBody(req);
     const record = knowledge.addKnowledge(body);
+
     persist("knowledge", knowledge.getAllKnowledge());
+
     return send(res, 201, { success: true, record });
   }
 
   if (path === "/api/evidence" && method === "GET") {
     const query = url.searchParams.get("q");
+
     return send(res, 200, {
       success: true,
       records: query
@@ -186,12 +321,15 @@ async function handle(req, res) {
   if (path === "/api/evidence" && method === "POST") {
     const body = await readBody(req);
     const record = evidence.evaluateEvidence(body);
+
     persist("evidence", evidence.getAllEvidence());
+
     return send(res, 201, { success: true, record });
   }
 
   if (path === "/api/experiments" && method === "GET") {
     const query = url.searchParams.get("q");
+
     return send(res, 200, {
       success: true,
       records: query
@@ -203,7 +341,9 @@ async function handle(req, res) {
   if (path === "/api/experiments" && method === "POST") {
     const body = await readBody(req);
     const record = experiments.createExperiment(body);
+
     persist("experiments", experiments.getAllExperiments());
+
     return send(res, 201, { success: true, record });
   }
 
@@ -211,12 +351,14 @@ async function handle(req, res) {
 
   if (match && method === "GET") {
     const record = experiments.getExperiment(match[1]);
+
     if (!record) {
       return send(res, 404, {
         success: false,
         error: "Experiment not found."
       });
     }
+
     return send(res, 200, { success: true, record });
   }
 
@@ -226,11 +368,14 @@ async function handle(req, res) {
 
   if (match && method === "POST") {
     const body = await readBody(req);
+
     const record = experiments.addObservation(
       match[1],
       body.observation
     );
+
     persist("experiments", experiments.getAllExperiments());
+
     return send(res, 200, { success: true, record });
   }
 
@@ -240,11 +385,14 @@ async function handle(req, res) {
 
   if (match && method === "POST") {
     const body = await readBody(req);
+
     const record = experiments.completeExperiment(
       match[1],
       body.conclusion
     );
+
     persist("experiments", experiments.getAllExperiments());
+
     return send(res, 200, { success: true, record });
   }
 
@@ -256,12 +404,9 @@ async function handle(req, res) {
 
 const server = http.createServer((req, res) => {
   handle(req, res).catch(error => {
-    const status = error.message === "Invalid JSON body." ||
-      error.message === "Request body is too large."
-      ? 400
-      : 400;
+    console.error("Request failed:", error.message);
 
-    send(res, status, {
+    send(res, error.statusCode || 400, {
       success: false,
       error: error.message || "Request failed."
     });
@@ -272,9 +417,14 @@ try {
   restoreData();
 
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Nova AI v2.5.0 running on port ${PORT}`);
+    console.log(`Nova AI v${VERSION} running on port ${PORT}`);
+    console.log(`AI model: ${OPENAI_MODEL}`);
+    console.log(
+      `OpenAI key configured: ${Boolean(process.env.OPENAI_API_KEY)}`
+    );
   });
 } catch (error) {
   console.error("Nova AI startup failed:", error.message);
   process.exit(1);
-}
+    }
+      

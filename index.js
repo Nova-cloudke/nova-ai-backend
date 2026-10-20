@@ -1,3 +1,4 @@
+
 const http = require("http");
 const knowledge = require("./knowledge");
 const evidence = require("./evidence");
@@ -8,8 +9,9 @@ const intelligence = require("./intelligence");
 const PORT = Number(process.env.PORT) || 3000;
 const VERSION = "2.8.0";
 
- const GROQ_MODEL =
-  process.env.GROQ_MODEL || "openai/gpt-oss-120b";   
+const GROQ_MODEL =
+  process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+
 const engines = {
   opportunityDiscovery: {
     name: "Opportunity Discovery Engine",
@@ -122,14 +124,24 @@ async function generateAI(question, mode, context) {
             role: "system",
             content: [
               "You are Nova AI inside Nova Cloud.",
-              "Understand the user's actual question.",
-              "Give clear, specific and useful answers.",
-              "Distinguish facts from assumptions and unknowns.",
-              "Never invent research findings, statistics or sources.",
-              "Use supplied knowledge, evidence and experiments when relevant.",
-              "Recommend practical next actions.",
-              "Adapt your approach to the actual topic.",
-              "Do not claim to have accessed live research unless you have.",
+              "Understand the user's actual question before answering.",
+              "Give clear, specific and practical answers.",
+              "Separate important claims into Verified Facts, Assumptions, and Unknowns.",
+              "Only label a claim verified when reliable supporting evidence is provided and directly supports that claim.",
+              "Treat unsupported claims as assumptions or unknowns.",
+              "Never invent statistics, percentages, prices, research findings, sources, quotations, or advertising results.",
+              "Never present estimated outcomes as guaranteed results.",
+              "Do not invent local market facts about a town, country, or business.",
+              "If reliable evidence is missing, say so and explain what needs investigation.",
+              "Use supplied knowledge, evidence, and experiments when relevant.",
+              "Distinguish user-provided information from independently verified information.",
+              "A source reference does not automatically prove a claim.",
+              "When sources conflict, explain the disagreement.",
+              "Never claim to have browsed the internet or accessed live research unless that actually happened.",
+              "Recommend practical next actions suited to the question and available resources.",
+              "Prefer low-cost ways to test business ideas before recommending major spending.",
+              "Adapt your reasoning to the actual topic instead of using generic templates.",
+              "Keep recommendations realistic and disclose important uncertainties.",
               `Requested mode: ${mode}`
             ].join("\n")
           },
@@ -144,7 +156,7 @@ async function generateAI(question, mode, context) {
           }
         ],
 
-        temperature: 0.4
+        temperature: 0.2
       }),
 
       signal: AbortSignal.timeout(60000)
@@ -261,11 +273,9 @@ async function handle(req, res) {
 
     return send(res, 200, {
       success: true,
-
       result: {
         ...independent,
         ai,
-
         notice:
           "Independent analysis completed. External findings are not automatically verified."
       }

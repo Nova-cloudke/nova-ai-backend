@@ -1,4 +1,4 @@
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 function analyze(question, mode = "all", context = {}) {
   const text = String(question || "").trim();
@@ -53,7 +53,7 @@ function analyze(question, mode = "all", context = {}) {
       return "investigation";
     }
 
-    if (/\b(compare|versus| vs )\b/.test(normalized)) {
+    if (/\b(compare|versus)\b/.test(normalized) || normalized.includes(" vs ")) {
       return "comparison";
     }
 
@@ -68,53 +68,117 @@ function analyze(question, mode = "all", context = {}) {
     return "general";
   }
 
-  function identifyUnknowns(records) {
-    const missing = [];
-
-    if (!records.knowledge.length) {
-      missing.push("Relevant existing knowledge has not been recorded.");
-    }
-
-    if (!records.evidence.length) {
-      missing.push("No matching evidence has been recorded.");
-    }
-
-    if (!records.experiments.length) {
-      missing.push("No matching experiments have been recorded.");
-    }
-
-    return missing;
-  }
-
   const existingData = {
     knowledge: findRelevant(context.knowledge),
     evidence: findRelevant(context.evidence),
     experiments: findRelevant(context.experiments)
   };
 
-  const questionType = classifyQuestion();
+  function assessEvidence(records) {
+    const items = records.evidence;
+
+    if (items.length === 0) {
+      return {
+        status: "insufficient",
+        confidence: "undetermined",
+        reason: "No matching evidence records were found.",
+        verifiedClaims: [],
+        limitations: [
+          "No supporting evidence is available in the matched records.",
+          "AI-generated claims must not be treated as verified facts."
+        ]
+      };
+    }
+
+    const assessed = items.map(item => {
+      const source = item.source || item.sourceUrl || null;
+      const hasSource = Boolean(source);
+
+      const verificationStatus =
+        String(item.verificationStatus || item.status || "")
+          .toLowerCase();
+
+      const explicitlyVerified = [
+        "verified",
+        "confirmed",
+        "validated"
+      ].includes(verificationStatus);
+
+      return {
+        evidence: item,
+        hasSource,
+        explicitlyVerified
+      };
+    });
+
+    const verifiedCount = assessed.filter(
+      item => item.explicitlyVerified && item.hasSource
+    ).length;
+
+    return {
+      status: verifiedCount > 0
+        ? "recorded_verified_status"
+        : "recorded_unverified",
+
+      confidence: "requires_review",
+
+      matchingEvidenceCount: items.length,
+      recordsMarkedVerifiedWithSources: verifiedCount,
+
+      reason:
+        "Stored records and source references require appropriate review. A verification label alone does not establish that a claim is true.",
+
+      verifiedClaims: [],
+
+      limitations: [
+        "Evidence relevance must be checked against the specific claim.",
+        "Sources must be inspected for reliability and date.",
+        "Conflicting evidence must be considered.",
+        "A stored status is not independent verification."
+      ]
+    };
+  }
+
+  function identifyUnknowns(records) {
+    const missing = [];
+
+    if (!records.knowledge.length) {
+      missing.push("No matching knowledge records were found.");
+    }
+
+    if (!records.evidence.length) {
+      missing.push("No matching evidence records were found.");
+    }
+
+    if (!records.experiments.length) {
+      missing.push("No matching experiments were found.");
+    }
+
+    return missing;
+  }
 
   const result = {
     question: text,
     mode,
     version: VERSION,
-
     analysisType: "independent",
 
     understanding: {
       originalQuestion: text,
       keyTerms,
       questionLength: text.length,
-      questionType
+      questionType: classifyQuestion()
     },
 
     problemAnalysis: {
       centralQuestion: text,
+
       investigationFocus: [
         "Identify the actual problem or objective.",
         "Determine who is affected and in what context.",
-        "Separate available information from assumptions.",
-        "Identify missing information that could change the decision."
+        "Separate recorded information from assumptions.",
+        "Identify missing information that could change the decision.",
+        "Determine what evidence would support a conclusion."
       ]
     },
 
@@ -122,11 +186,23 @@ function analyze(question, mode = "all", context = {}) {
 
     knowledgeGaps: identifyUnknowns(existingData),
 
-    evidenceAssessment: {
-      matchingKnowledgeRecords: existingData.knowledge.length,
-      matchingEvidenceRecords: existingData.evidence.length,
-      matchingExperiments: existingData.experiments.length,
-      warning: "Matching records are not automatically verified. Their quality and relevance must be assessed."
+    evidenceAssessment: assessEvidence(existingData),
+
+    reasoningStandards: {
+      distinguishFactsFromAssumptions: true,
+      requireEvidenceForVerifiedClaims: true,
+      discloseKnowledgeGaps: true,
+      acknowledgeConflictingEvidence: true,
+
+      rules: [
+        "Do not present assumptions as established facts.",
+        "Do not invent statistics, sources, research findings, or quotations.",
+        "A source reference does not automatically prove a claim.",
+        "Distinguish user-provided information from independently verified information.",
+        "When evidence is missing, explain what needs investigation.",
+        "When sources disagree, describe the disagreement.",
+        "Do not claim to have browsed the internet unless live research was actually performed."
+      ]
     },
 
     opportunityDiscovery: {
@@ -136,9 +212,10 @@ function analyze(question, mode = "all", context = {}) {
         "Define the problem and desired outcome.",
         "Identify affected customers or users.",
         "Investigate existing alternatives.",
-        "Identify unmet needs and possible solutions.",
-        "Assess assumptions, risks and feasibility.",
-        "Select a small test before making major investments."
+        "Identify possible unmet needs.",
+        "Generate potential solutions.",
+        "Evaluate feasibility, risks, and assumptions.",
+        "Validate demand before making major investments."
       ],
 
       questionsToInvestigate: [
@@ -175,15 +252,16 @@ function analyze(question, mode = "all", context = {}) {
     },
 
     nextActions: [
-      "Review the most relevant existing records.",
-      "Identify the biggest knowledge gap.",
-      "Collect evidence relevant to the actual question.",
-      "Choose one practical next step.",
-      "Record results so future decisions can improve."
+      "Review relevant knowledge and evidence.",
+      "Identify the most important unanswered question.",
+      "Find reliable sources or collect real-world observations.",
+      "Evaluate the evidence against the specific claim.",
+      "Choose one practical next action.",
+      "Record the outcome for future investigations."
     ],
 
     notice:
-      "Independent analysis organizes the question and available records. It does not independently verify external facts or access live internet research."
+      "Independent analysis organizes the question and available records. It does not itself verify external claims or access live internet research."
   };
 
   if (mode === "opportunity") {

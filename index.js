@@ -181,12 +181,13 @@ content: [
     throw new Error("Groq AI request failed.");
   }
 
-  return {
-    configured: true,
-    answer: data.choices?.[0]?.message?.content || null,
-    model: data.model || GROQ_MODEL
-  };
-}
+  const rawAnswer = data.choices?.[0]?.message?.content || null;
+
+return {
+  configured: true,
+  answer: rawAnswer,
+  model: data.model || GROQ_MODEL
+};
 
 async function handle(req, res) {
   if (req.method === "OPTIONS") {

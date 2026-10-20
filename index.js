@@ -434,4 +434,4 @@ try {
 } catch (error) {
   console.error("Nova AI startup failed:", error.message);
   process.exit(1);
-      }
+}

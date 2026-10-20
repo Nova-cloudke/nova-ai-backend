@@ -7,9 +7,9 @@ const intelligence = require("./intelligence");
 
 const PORT = Number(process.env.PORT) || 3000;
 const VERSION = "2.8.0";
-const GROQ_MODEL =
-  process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-
+"llama-3.3-70b-versatile";
+ const GROQ_MODEL =
+  process.env.GROQ_MODEL || "openai/gpt-oss-120b";   
 const engines = {
   opportunityDiscovery: {
     name: "Opportunity Discovery Engine",

@@ -1,236 +1,214 @@
-const VERSION = "1.2.0";
+const VERSION = "1.1.0";
 
-function analyze(question, mode = "all", context = {}) {
-  const text = String(question || "").trim();
+function normalize(value) {
+  return String(value || "").toLowerCase();
+}
 
-  if (!text) {
-    throw new Error("A question is required.");
-  }
-
-  const normalized = text.toLowerCase();
-
+function getKeywords(question) {
   const stopWords = new Set([
-    "the", "and", "for", "are", "but", "not", "you",
-    "your", "can", "how", "what", "why", "when", "where",
-    "who", "does", "did", "has", "have", "had", "with",
-    "from", "that", "this", "will", "would", "could",
-    "should", "into", "about", "more", "some", "their",
-    "they", "them", "its", "our", "out", "all"
+    "what", "when", "where", "which", "who", "whom",
+    "how", "why", "can", "could", "should", "would",
+    "the", "and", "for", "with", "from", "that", "this",
+    "are", "was", "were", "has", "have", "had", "into",
+    "about", "their", "them", "your", "you", "business"
   ]);
 
-  const words = normalized
-    .replace(/[^\w\s]/g, "")
+  return normalize(question)
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter(word => word.length > 2 && !stopWords.has(word));
+}
 
-  const keyTerms = [...new Set(words)];
+function matchesQuestion(record, keywords) {
+  if (!record || typeof record !== "object") return false;
 
-  function findRelevant(records = []) {
-    if (!Array.isArray(records)) return [];
+  const content = normalize(
+    Object.values(record)
+      .filter(value =>
+        typeof value === "string" ||
+        typeof value === "number"
+      )
+      .join(" ")
+  );
 
-    return records
-      .map(record => {
-        const content = JSON.stringify(record).toLowerCase();
+  return keywords.some(word => content.includes(word));
+}
 
-        const matches = keyTerms.filter(term =>
-          content.includes(term)
-        ).length;
+function findMatches(records, keywords) {
+  if (!Array.isArray(records)) return [];
 
-        return { record, matches };
-      })
-      .filter(item => item.matches > 0)
-      .sort((a, b) => b.matches - a.matches)
-      .slice(0, 10)
-      .map(item => item.record);
+  return records.filter(record =>
+    matchesQuestion(record, keywords)
+  );
+}
+
+function assessEvidence(evidence) {
+  const verified = [];
+  const unverified = [];
+  const conflicts = [];
+
+  for (const item of evidence) {
+    const status = normalize(item.status);
+    const conclusion = normalize(item.conclusion);
+
+    if (
+      status === "conflicting" ||
+      status === "disputed" ||
+      item.conflict === true
+    ) {
+      conflicts.push(item);
+    } else if (
+      status === "verified" &&
+      item.source &&
+      item.claim
+    ) {
+      verified.push(item);
+    } else {
+      unverified.push(item);
+    }
   }
 
-  function classifyQuestion() {
-    if (/\b(opportunity|opportunities|market gap|unmet need)\b/.test(normalized)) {
-      return "opportunity";
-    }
+  let assessmentStatus = "insufficient";
+  let confidence = "undetermined";
 
-    if (/\b(experiment|hypothesis|investigate|unknown|unanswered)\b/.test(normalized)) {
-      return "investigation";
-    }
-
-    if (/\b(compare|versus)\b/.test(normalized) || normalized.includes(" vs ")) {
-      return "comparison";
-    }
-
-    if (/\b(strategy|strategic plan|grow|growth|improve|increase|attract)\b/.test(normalized)) {
-      return "strategy";
-    }
-
-    if (/\b(what is|explain|how does|how do|meaning)\b/.test(normalized)) {
-      return "explanation";
-    }
-
-    return "general";
+  if (conflicts.length > 0) {
+    assessmentStatus = "conflicting";
+    confidence = "undetermined";
+  } else if (verified.length > 0) {
+    assessmentStatus = "evidence_available";
+    confidence = "requires_claim_level_review";
   }
 
-  const existingData = {
-    knowledge: findRelevant(context.knowledge),
-    evidence: findRelevant(context.evidence),
-    experiments: findRelevant(context.experiments)
+  return {
+    status: assessmentStatus,
+    confidence,
+    verifiedClaims: verified.map(item => ({
+      claim: item.claim,
+      source: item.source,
+      date: item.date || null
+    })),
+    unverifiedEvidenceCount: unverified.length,
+    conflictingEvidenceCount: conflicts.length,
+    reason: verified.length === 0
+      ? "No evidence records meeting the verification requirements were found."
+      : "Evidence records were found. Each source and claim must still be checked for relevance, reliability and accuracy.",
+    limitations: [
+      "An evidence record marked verified is not automatically proof that its claim is true.",
+      "AI-generated statements are not independent evidence.",
+      "Missing evidence must not be interpreted as proof that a claim is false.",
+      "Current market conditions require up-to-date sources or observations."
+    ]
   };
+}
 
-  function assessEvidence(records) {
-    const items = records.evidence;
+function analyze(question, mode = "all", context = {}) {
+  const originalQuestion = String(question || "").trim();
 
-    if (items.length === 0) {
-      return {
-        status: "insufficient",
-        confidence: "undetermined",
-        reason: "No matching evidence records were found.",
-        verifiedClaims: [],
-        limitations: [
-          "No supporting evidence is available in the matched records.",
-          "AI-generated claims must not be treated as verified facts."
-        ]
-      };
-    }
-
-    const assessed = items.map(item => {
-      const source = item.source || item.sourceUrl || null;
-      const hasSource = Boolean(source);
-
-      const verificationStatus =
-        String(item.verificationStatus || item.status || "")
-          .toLowerCase();
-
-      const explicitlyVerified = [
-        "verified",
-        "confirmed",
-        "validated"
-      ].includes(verificationStatus);
-
-      return {
-        evidence: item,
-        hasSource,
-        explicitlyVerified
-      };
-    });
-
-    const verifiedCount = assessed.filter(
-      item => item.explicitlyVerified && item.hasSource
-    ).length;
-
-    return {
-      status: verifiedCount > 0
-        ? "recorded_verified_status"
-        : "recorded_unverified",
-
-      confidence: "requires_review",
-
-      matchingEvidenceCount: items.length,
-      recordsMarkedVerifiedWithSources: verifiedCount,
-
-      reason:
-        "Stored records and source references require appropriate review. A verification label alone does not establish that a claim is true.",
-
-      verifiedClaims: [],
-
-      limitations: [
-        "Evidence relevance must be checked against the specific claim.",
-        "Sources must be inspected for reliability and date.",
-        "Conflicting evidence must be considered.",
-        "A stored status is not independent verification."
-      ]
-    };
+  if (!originalQuestion) {
+    throw new Error("A question is required for analysis.");
   }
 
-  function identifyUnknowns(records) {
-    const missing = [];
+  const keywords = getKeywords(originalQuestion);
 
-    if (!records.knowledge.length) {
-      missing.push("No matching knowledge records were found.");
-    }
+  const knowledge = findMatches(context.knowledge, keywords);
+  const evidence = findMatches(context.evidence, keywords);
+  const experiments = findMatches(context.experiments, keywords);
 
-    if (!records.evidence.length) {
-      missing.push("No matching evidence records were found.");
-    }
-
-    if (!records.experiments.length) {
-      missing.push("No matching experiments were found.");
-    }
-
-    return missing;
-  }
+  const evidenceAssessment = assessEvidence(evidence);
 
   const result = {
-    question: text,
+    question: originalQuestion,
     mode,
     version: VERSION,
     analysisType: "independent",
 
     understanding: {
-      originalQuestion: text,
-      keyTerms,
-      questionLength: text.length,
-      questionType: classifyQuestion()
+      originalQuestion,
+      keyTerms: keywords,
+      questionLength: originalQuestion.length,
+      questionType: /how|strategy|improve|increase|grow/i.test(originalQuestion)
+        ? "strategy"
+        : /why|cause|reason/i.test(originalQuestion)
+          ? "investigation"
+          : "general"
     },
 
     problemAnalysis: {
-      centralQuestion: text,
-
+      centralQuestion: originalQuestion,
       investigationFocus: [
-        "Identify the actual problem or objective.",
-        "Determine who is affected and in what context.",
-        "Separate recorded information from assumptions.",
-        "Identify missing information that could change the decision.",
-        "Determine what evidence would support a conclusion."
+        "Define the problem and desired outcome.",
+        "Separate recorded facts from assumptions.",
+        "Identify missing information.",
+        "Determine what evidence would support each claim.",
+        "Identify practical ways to test possible solutions."
       ]
     },
 
-    existingData,
+    existingData: {
+      knowledge,
+      evidence,
+      experiments
+    },
 
-    knowledgeGaps: identifyUnknowns(existingData),
+    knowledgeGaps: [
+      ...(knowledge.length === 0
+        ? ["No matching knowledge records were found."]
+        : []),
+      ...(evidence.length === 0
+        ? ["No matching evidence records were found."]
+        : []),
+      ...(experiments.length === 0
+        ? ["No matching experiments were found."]
+        : [])
+    ],
 
-    evidenceAssessment: assessEvidence(existingData),
+    evidenceAssessment,
 
     reasoningStandards: {
       distinguishFactsFromAssumptions: true,
       requireEvidenceForVerifiedClaims: true,
       discloseKnowledgeGaps: true,
       acknowledgeConflictingEvidence: true,
-
       rules: [
-        "Do not present assumptions as established facts.",
-        "Do not invent statistics, sources, research findings, or quotations.",
-        "A source reference does not automatically prove a claim.",
-        "Distinguish user-provided information from independently verified information.",
-        "When evidence is missing, explain what needs investigation.",
-        "When sources disagree, describe the disagreement.",
-        "Do not claim to have browsed the internet unless live research was actually performed."
+        "Never invent sources, statistics, quotations or research findings.",
+        "Never describe AI-generated claims as independently verified.",
+        "Include source references for factual claims that require verification.",
+        "Distinguish user-provided information from independently verified findings.",
+        "Check source credibility, publication date and relevance.",
+        "Disclose uncertainty and conflicting evidence.",
+        "Do not claim to have browsed the internet unless live research occurred."
       ]
     },
 
-    opportunityDiscovery: {
-      purpose: "Identify unmet needs and evaluate possible opportunities.",
+    nextActions: [
+      "Identify the most important unanswered question.",
+      "Find reliable sources or collect real-world observations.",
+      "Check each important claim against its supporting evidence.",
+      "Test promising solutions using measurable outcomes.",
+      "Record findings and update conclusions when new evidence appears."
+    ],
 
+    notice: "Independent analysis completed. This module does not perform live internet research."
+  };
+
+  if (mode === "all" || mode === "opportunityDiscovery") {
+    result.opportunityDiscovery = {
+      purpose: "Identify unmet needs and evaluate possible opportunities.",
       investigation: [
         "Define the problem and desired outcome.",
-        "Identify affected customers or users.",
+        "Identify affected customers.",
         "Investigate existing alternatives.",
-        "Identify possible unmet needs.",
-        "Generate potential solutions.",
-        "Evaluate feasibility, risks, and assumptions.",
-        "Validate demand before making major investments."
-      ],
-
-      questionsToInvestigate: [
-        "Who experiences the problem?",
-        "What evidence shows that the problem exists?",
-        "What alternatives are currently available?",
-        "What remains difficult or unsolved?",
-        "Would people use or pay for a proposed solution?",
-        "How can the opportunity be tested at low cost?"
+        "Identify unmet needs.",
+        "Compare potential solutions.",
+        "Assess feasibility, risks and assumptions.",
+        "Validate demand before investing."
       ]
-    },
+    };
+  }
 
-    novaGenesis: {
+  if (mode === "all" || mode === "novaGenesis") {
+    result.novaGenesis = {
       purpose: "Turn unanswered questions into structured investigations.",
-
       investigation: [
         "Define the unanswered question.",
         "Record existing knowledge.",
@@ -238,36 +216,9 @@ function analyze(question, mode = "all", context = {}) {
         "Form a testable hypothesis.",
         "Design an experiment.",
         "Collect observations and evidence.",
-        "Evaluate the results.",
-        "Update conclusions when new evidence appears."
-      ],
-
-      questionsToInvestigate: [
-        "What is already known?",
-        "What remains uncertain?",
-        "Which assumptions could be wrong?",
-        "What test would reduce uncertainty?",
-        "What results would support or challenge the hypothesis?"
+        "Evaluate results and update conclusions."
       ]
-    },
-
-    nextActions: [
-      "Review relevant knowledge and evidence.",
-      "Identify the most important unanswered question.",
-      "Find reliable sources or collect real-world observations.",
-      "Evaluate the evidence against the specific claim.",
-      "Choose one practical next action.",
-      "Record the outcome for future investigations."
-    ],
-
-    notice:
-      "Independent analysis organizes the question and available records. It does not itself verify external claims or access live internet research."
-  };
-
-  if (mode === "opportunity") {
-    delete result.novaGenesis;
-  } else if (mode === "genesis") {
-    delete result.opportunityDiscovery;
+    };
   }
 
   return result;

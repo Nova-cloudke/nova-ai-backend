@@ -146,6 +146,7 @@ content: [
   "Prefer low-cost tests before recommending major spending.",
   "Avoid repeating the question or restating the same recommendation.",
   "Do not add arbitrary statistics, targets, budgets, or timelines without a clear basis.",
+  "Never invent prices, discounts, customer counts, follower targets, or delivery promises.",
   "End with a numbered next action only when it is useful.",
   `Requested mode: ${mode}`
 ].join("\n")

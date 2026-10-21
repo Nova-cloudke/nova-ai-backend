@@ -187,6 +187,7 @@ return {
   configured: true,
   answer: rawAnswer,
   model: data.model || GROQ_MODEL
+}
 };
 
 async function handle(req, res) {

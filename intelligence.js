@@ -1,7 +1,7 @@
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 function normalize(value) {
-  return String(value || "").toLowerCase();
+  return String(value || "").toLowerCase().trim();
 }
 
 function getKeywords(question) {
@@ -10,7 +10,8 @@ function getKeywords(question) {
     "how", "why", "can", "could", "should", "would",
     "the", "and", "for", "with", "from", "that", "this",
     "are", "was", "were", "has", "have", "had", "into",
-    "about", "their", "them", "your", "you", "business"
+    "about", "their", "them", "your", "you", "business",
+    "does", "its", "not", "but", "all", "any", "our"
   ]);
 
   return normalize(question)
@@ -49,7 +50,6 @@ function assessEvidence(evidence) {
 
   for (const item of evidence) {
     const status = normalize(item.status);
-    const conclusion = normalize(item.conclusion);
 
     if (
       status === "conflicting" ||
@@ -68,20 +68,19 @@ function assessEvidence(evidence) {
     }
   }
 
-  let assessmentStatus = "insufficient";
-  let confidence = "undetermined";
+  let status = "insufficient";
 
   if (conflicts.length > 0) {
-    assessmentStatus = "conflicting";
-    confidence = "undetermined";
+    status = "conflicting";
   } else if (verified.length > 0) {
-    assessmentStatus = "evidence_available";
-    confidence = "requires_claim_level_review";
+    status = "evidence_available";
   }
 
   return {
-    status: assessmentStatus,
-    confidence,
+    status,
+    confidence: verified.length > 0 && conflicts.length === 0
+      ? "requires_claim_level_review"
+      : "undetermined",
     verifiedClaims: verified.map(item => ({
       claim: item.claim,
       source: item.source,
@@ -89,15 +88,124 @@ function assessEvidence(evidence) {
     })),
     unverifiedEvidenceCount: unverified.length,
     conflictingEvidenceCount: conflicts.length,
-    reason: verified.length === 0
-      ? "No evidence records meeting the verification requirements were found."
-      : "Evidence records were found. Each source and claim must still be checked for relevance, reliability and accuracy.",
     limitations: [
-      "An evidence record marked verified is not automatically proof that its claim is true.",
-      "AI-generated statements are not independent evidence.",
-      "Missing evidence must not be interpreted as proof that a claim is false.",
-      "Current market conditions require up-to-date sources or observations."
+      "A verified label does not automatically prove a claim.",
+      "Sources must be checked for credibility, accuracy and relevance.",
+      "Missing evidence does not prove a claim is false.",
+      "AI-generated statements are not independent evidence."
     ]
+  };
+}
+
+function classifyQuestion(question) {
+  const q = normalize(question);
+
+  if (/customer|consumer|buyer|client|unmet need|market gap/.test(q)) {
+    return "customer_research";
+  }
+
+  if (/market|competitor|competition|industry|demand/.test(q)) {
+    return "market_investigation";
+  }
+
+  if (/technology|computer|software|hardware|engine|sensor|how does|how do/.test(q)) {
+    return "technology_investigation";
+  }
+
+  if (/why|cause|reason|problem|failure|difficult|challenge/.test(q)) {
+    return "problem_investigation";
+  }
+
+  if (/idea|invent|innovation|develop|design|create|build/.test(q)) {
+    return "innovation_investigation";
+  }
+
+  if (/business|company|revenue|profit|service|product|growth/.test(q)) {
+    return "business_investigation";
+  }
+
+  return "general_investigation";
+}
+
+function createInvestigationPlan(question, knowledge, evidence, experiments) {
+  const type = classifyQuestion(question);
+
+  const plans = {
+    customer_research: [
+      "Define the customer group and the situation being investigated.",
+      "Identify customer needs, difficulties and desired outcomes.",
+      "Investigate existing solutions and alternatives.",
+      "Identify possible unmet needs without assuming they exist.",
+      "Collect customer feedback or other reliable evidence.",
+      "Test whether a proposed solution addresses a real need."
+    ],
+
+    market_investigation: [
+      "Define the market, location and customer segment.",
+      "Identify existing providers and alternative solutions.",
+      "Investigate customer demand and purchasing behaviour.",
+      "Compare available offerings using reliable information.",
+      "Identify evidence gaps and uncertain assumptions.",
+      "Evaluate possible opportunities and ways to validate them."
+    ],
+
+    technology_investigation: [
+      "Define the technology and its intended purpose.",
+      "Identify its main components, inputs and outputs.",
+      "Trace how the technology operates step by step.",
+      "Investigate real-world applications and technical requirements.",
+      "Examine limitations, costs, risks and maintenance needs.",
+      "Identify technical documentation or experiments needed to verify claims."
+    ],
+
+    problem_investigation: [
+      "Describe the problem and the outcome desired.",
+      "Identify who or what is affected and under what conditions.",
+      "Separate observed symptoms from possible causes.",
+      "Develop alternative explanations.",
+      "Identify observations or evidence that could distinguish those explanations.",
+      "Test promising solutions and measure their results."
+    ],
+
+    innovation_investigation: [
+      "Define the idea and the problem it is intended to address.",
+      "Identify intended users and their needs.",
+      "Investigate existing solutions and their limitations.",
+      "List the assumptions that must be tested.",
+      "Assess feasibility, costs, risks and required resources.",
+      "Design a small experiment or prototype to evaluate the idea."
+    ],
+
+    business_investigation: [
+      "Define the business and the question to be answered.",
+      "Identify customers, products, services and value offered.",
+      "Investigate customer needs and buying decisions.",
+      "Examine competitors, operations and the business model.",
+      "Identify performance evidence and missing information.",
+      "Compare improvements and select a measurable next action."
+    ],
+
+    general_investigation: [
+      "Clarify the question and define the desired understanding.",
+      "Identify the main concepts and relevant context.",
+      "Record what is already known and how it is known.",
+      "List unanswered questions and competing explanations.",
+      "Identify reliable sources or observations needed.",
+      "Evaluate findings and determine the next investigation."
+    ]
+  };
+
+  return {
+    type,
+    steps: plans[type],
+    currentKnowledge: knowledge.length,
+    matchingEvidence: evidence.length,
+    existingExperiments: experiments.length,
+    priority: knowledge.length === 0 || evidence.length === 0
+      ? "Gather relevant information and evidence."
+      : experiments.length === 0
+        ? "Determine whether an experiment is needed."
+        : "Review existing findings and identify the next unanswered question."
   };
 }
 
@@ -116,6 +224,13 @@ function analyze(question, mode = "all", context = {}) {
 
   const evidenceAssessment = assessEvidence(evidence);
 
+  const investigationPlan = createInvestigationPlan(
+    originalQuestion,
+    knowledge,
+    evidence,
+    experiments
+  );
+
   const result = {
     question: originalQuestion,
     mode,
@@ -125,23 +240,12 @@ function analyze(question, mode = "all", context = {}) {
     understanding: {
       originalQuestion,
       keyTerms: keywords,
-      questionLength: originalQuestion.length,
-      questionType: /how|strategy|improve|increase|grow/i.test(originalQuestion)
-        ? "strategy"
-        : /why|cause|reason/i.test(originalQuestion)
-          ? "investigation"
-          : "general"
+      questionType: investigationPlan.type
     },
 
     problemAnalysis: {
       centralQuestion: originalQuestion,
-      investigationFocus: [
-        "Define the problem and desired outcome.",
-        "Separate recorded facts from assumptions.",
-        "Identify missing information.",
-        "Determine what evidence would support each claim.",
-        "Identify practical ways to test possible solutions."
-      ]
+      investigationFocus: investigationPlan.steps
     },
 
     existingData: {
@@ -149,6 +253,8 @@ function analyze(question, mode = "all", context = {}) {
       evidence,
       experiments
     },
+
+    investigationPlan,
 
     knowledgeGaps: [
       ...(knowledge.length === 0
@@ -164,16 +270,34 @@ function analyze(question, mode = "all", context = {}) {
 
     evidenceAssessment,
 
+    hypothesisGuidance: {
+      instruction: "Develop possible explanations from the question and available information.",
+      requirements: [
+        "Label explanations as hypotheses until tested.",
+        "Identify evidence that would support or contradict each hypothesis.",
+        "Do not present assumptions as established facts."
+      ]
+    },
+
+    experimentGuidance: {
+      requirements: [
+        "Define what will be tested.",
+        "Specify the observations or measurements required.",
+        "Determine what result would support or contradict the hypothesis.",
+        "Record the actual outcome.",
+        "Update conclusions based on the result."
+      ]
+    },
+
     reasoningStandards: {
       distinguishFactsFromAssumptions: true,
       requireEvidenceForVerifiedClaims: true,
       discloseKnowledgeGaps: true,
       acknowledgeConflictingEvidence: true,
       rules: [
-        "Never invent sources, statistics, quotations or research findings.",
+        "Never invent sources, statistics or research findings.",
         "Never describe AI-generated claims as independently verified.",
-        "Include source references for factual claims that require verification.",
-        "Distinguish user-provided information from independently verified findings.",
+        "Distinguish user-provided information from external evidence.",
         "Check source credibility, publication date and relevance.",
         "Disclose uncertainty and conflicting evidence.",
         "Do not claim to have browsed the internet unless live research occurred."
@@ -181,14 +305,14 @@ function analyze(question, mode = "all", context = {}) {
     },
 
     nextActions: [
-      "Identify the most important unanswered question.",
-      "Find reliable sources or collect real-world observations.",
-      "Check each important claim against its supporting evidence.",
-      "Test promising solutions using measurable outcomes.",
-      "Record findings and update conclusions when new evidence appears."
+      investigationPlan.priority,
+      "Investigate the highest-priority unanswered question.",
+      "Record reliable sources and observations.",
+      "Test promising explanations when practical.",
+      "Update the investigation when new evidence appears."
     ],
 
-    notice: "Independent analysis completed. This module does not perform live internet research."
+    notice: "This module creates a structured investigation plan. It does not perform live internet research or independently verify claims."
   };
 
   if (mode === "all" || mode === "opportunityDiscovery") {
@@ -198,7 +322,7 @@ function analyze(question, mode = "all", context = {}) {
         "Define the problem and desired outcome.",
         "Identify affected customers.",
         "Investigate existing alternatives.",
-        "Identify unmet needs.",
+        "Identify possible unmet needs.",
         "Compare potential solutions.",
         "Assess feasibility, risks and assumptions.",
         "Validate demand before investing."
@@ -209,15 +333,17 @@ function analyze(question, mode = "all", context = {}) {
   if (mode === "all" || mode === "novaGenesis") {
     result.novaGenesis = {
       purpose: "Turn unanswered questions into structured investigations.",
-      investigation: [
-        "Define the unanswered question.",
-        "Record existing knowledge.",
-        "Identify missing information.",
-        "Form a testable hypothesis.",
-        "Design an experiment.",
-        "Collect observations and evidence.",
-        "Evaluate results and update conclusions."
-      ]
+      stages: [
+        "Understand the question.",
+        "Examine existing knowledge.",
+        "Identify knowledge gaps.",
+        "Develop testable hypotheses.",
+        "Design experiments.",
+        "Collect and evaluate evidence.",
+        "Update conclusions.",
+        "Recommend practical next actions."
+      ],
+      investigationPlan
     };
   }
 

@@ -187,43 +187,82 @@ let lines = answer
 let points = [];
 
 async function connectNovaAI(question, type = "research") {
-  let response;
+function formatAIResult(data) {
+  let answer =
+    data?.answer ??
+    data?.result?.answer ??
+    data?.result?.ai?.answer ??
+    data?.ai?.answer ??
+    data?.result;
 
+  if (typeof answer !== "string") {
+    return "Nova AI returned no readable answer.";
+  }
+
+  answer = answer
+    .trim()
+    .replace(/\r\n?/g, "\n");
+
+  // Remove a JSON wrapper if the backend included one.
   try {
-    response = await fetch(`${NOVA_AI_URL}/api/core`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
-      body: JSON.stringify({
-        question: String(question || "").trim(),
-        project: String(type || "research"),
-        mode: "all"
-      })
-    });
+    const parsed = JSON.parse(answer);
+    if (parsed && typeof parsed.answer === "string") {
+      answer = parsed.answer;
+    }
   } catch (error) {
-    throw new Error(
-      "Could not reach Nova AI. Check the Render service and internet connection."
-    );
+    // The answer is ordinary text, so continue.
   }
 
-  let data;
+  answer = answer
+    .replace(/^\s*\{\s*"success"\s*:\s*true\s*,?\s*/i, "")
+    .replace(/^\s*"answer"\s*:\s*/i, "")
+    .replace(/\s*\}\s*$/, "")
+    .replace(/^["']|["']$/g, "")
+    .trim();
 
-  try {
-    data = await response.json();
-  } catch (error) {
-    throw new Error("Nova AI returned an unreadable response.");
+  if (!answer) {
+    return "Nova AI returned an empty answer.";
   }
 
-  if (!response.ok || !data || data.success === false) {
-    throw new Error(
-      data?.error || `Request failed (HTTP ${response.status}).`
-    );
+  // Preserve numbered points when already provided.
+  const lines = answer
+    .replace(/\s+(?=\d+[.)]\s+)/g, "\n")
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const points = [];
+
+  for (const line of lines) {
+    const clean = line
+      .replace(/^(?:\d+[.)]\s*|[-•*]\s+)/, "")
+      .trim();
+
+    if (!clean) continue;
+
+    // Keep existing points together.
+    if (/^\d+[.)]\s/.test(line)) {
+      points.push(clean);
+      continue;
+    }
+
+    // Split ordinary paragraphs into readable sentences.
+    const sentences = clean.match(/[^.!?]+(?:[.!?]+|$)/g);
+
+    if (sentences) {
+      sentences.forEach(sentence => {
+        const point = sentence.trim();
+        if (point) points.push(point);
+      });
+    } else {
+      points.push(clean);
+    }
   }
 
-  return data;
-     }
+  return points
+    .map((point, index) => `${index + 1}. ${point}`)
+    .join("\n");
+  }
 /* RESEARCH WORKSPACE */
 let researchQuestion="",researchAreas=[];
 function understandResearchQuestion(question){

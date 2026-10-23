@@ -1,114 +1,123 @@
 name: Test Nova AI
 
 on:
-  push:
-  workflow_dispatch:
+push:
+workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+test:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+  - name: Set up Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: '20'
 
-      - name: Check JavaScript files
-        run: |
-          node --check index.js
-          node --check storage.js
-          node --check experiments.js
-          node --check knowledge.js
-          node --check evidence.js
+  - name: Check JavaScript files
+    run: |
+      node --check index.js
+      node --check storage.js
+      node --check experiments.js
+      node --check knowledge.js
+      node --check evidence.js
+      node --check intelligence.js
 
-      - name: Start Nova AI backend
-        run: |
-          node index.js > server.log 2>&1 &
-          echo $! > server.pid
+  - name: Start Nova AI backend
+    run: |
+      touch server.log
+      node index.js > server.log 2>&1 &
+      echo $! > server.pid
 
-      - name: Wait for server
-        run: |
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:3000/api/health; then
-              echo "Health check passed."
-              exit 0
-            fi
-            if ! kill -0 "$(cat server.pid)" 2>/dev/null; then
-              cat server.log
-              exit 1
-            fi
-            sleep 1
-          done
+  - name: Wait for server
+    run: |
+      for i in {1..30}; do
+        if curl -fsS http://127.0.0.1:3000/api/health; then
+          echo "Health check passed."
+          exit 0
+        fi
+
+        if ! kill -0 "$(cat server.pid)" 2>/dev/null; then
+          echo "Nova AI backend stopped unexpectedly."
           cat server.log
           exit 1
+        fi
 
-      - name: Test core endpoint
-        run: |
-          curl --fail-with-body -sS \
-            -X POST http://127.0.0.1:3000/api/core \
-            -H "Content-Type: application/json" \
-            -d '{"question":"Test Nova AI","mode":"all"}'
+        sleep 1
+      done
 
-      - name: Test experiment creation
-        run: |
-          curl -sS \
-            -X POST http://127.0.0.1:3000/api/experiments \
-            -H "Content-Type: application/json" \
-            -d '{"question":"Test experiment","hypothesis":"The feature works","method":"Run automated test","expectedOutcome":"All routes pass"}' \
-            -o experiment.json \
-            -w "\nHTTP STATUS: %{http_code}\n"
+      echo "Health check timed out."
+      cat server.log
+      exit 1
 
-          cat experiment.json
+  - name: Test core endpoint
+    run: |
+      curl --fail-with-body -sS \
+        -X POST http://127.0.0.1:3000/api/core \
+        -H "Content-Type: application/json" \
+        -d '{"question":"Test Nova AI","mode":"all"}'
 
-          node -e "
-            const r = require('./experiment.json');
-            if (!r.success || !r.record || !r.record.id) process.exit(1);
-            require('fs').writeFileSync('experiment-id.txt', String(r.record.id));
-            console.log('Experiment creation passed.');
-          "
+  - name: Test experiment creation
+    run: |
+      curl --fail-with-body -sS \
+        -X POST http://127.0.0.1:3000/api/experiments \
+        -H "Content-Type: application/json" \
+        -d '{"question":"Test experiment","hypothesis":"The feature works","method":"Run automated test","expectedOutcome":"All routes pass"}' \
+        -o experiment.json
 
-      - name: Test experiment observation
-        run: |
-          ID=$(cat experiment-id.txt)
+      cat experiment.json
 
-          curl -sS \
-            -X POST "http://127.0.0.1:3000/api/experiments/$ID/observations" \
-            -H "Content-Type: application/json" \
-            -d '{"observation":"Automated observation recorded"}' \
-            -o observation.json \
-            -w "\nHTTP STATUS: %{http_code}\n"
+      node -e "
+        const r = require('./experiment.json');
+        if (!r.success || !r.record || !r.record.id) process.exit(1);
+        require('fs').writeFileSync('experiment-id.txt', String(r.record.id));
+        console.log('Experiment creation passed.');
+      "
 
-          cat observation.json
+  - name: Test experiment observation
+    run: |
+      ID=$(cat experiment-id.txt)
 
-          node -e "
-            const r = require('./observation.json');
-            if (!r.success || !r.record || !r.record.observations.length) process.exit(1);
-            console.log('Experiment observation passed.');
-          "
+      curl --fail-with-body -sS \
+        -X POST "http://127.0.0.1:3000/api/experiments/$ID/observations" \
+        -H "Content-Type: application/json" \
+        -d '{"observation":"Automated observation recorded"}' \
+        -o observation.json
 
-      - name: Test experiment completion
-        run: |
-          ID=$(cat experiment-id.txt)
+      cat observation.json
 
-          curl -sS \
-            -X POST "http://127.0.0.1:3000/api/experiments/$ID/complete" \
-            -H "Content-Type: application/json" \
-            -d '{"conclusion":"Experiment test passed"}' \
-            -o completion.json \
-            -w "\nHTTP STATUS: %{http_code}\n"
+      node -e "
+        const r = require('./observation.json');
+        if (!r.success || !r.record || !Array.isArray(r.record.observations) || !r.record.observations.length) process.exit(1);
+        console.log('Experiment observation passed.');
+      "
 
-          cat completion.json
+  - name: Test experiment completion
+    run: |
+      ID=$(cat experiment-id.txt)
 
-          node -e "
-            const r = require('./completion.json');
-            if (!r.success || !r.record || r.record.status !== 'completed') process.exit(1);
-            console.log('Experiment completion passed.');
-          "
+      curl --fail-with-body -sS \
+        -X POST "http://127.0.0.1:3000/api/experiments/$ID/complete" \
+        -H "Content-Type: application/json" \
+        -d '{"conclusion":"Experiment test passed"}' \
+        -o completion.json
 
-      - name: Show server logs if test fails
-        if: failure()
-        run: cat server.log
+      cat completion.json
+
+      node -e "
+        const r = require('./completion.json');
+        if (!r.success || !r.record || r.record.status !== 'completed') process.exit(1);
+        console.log('Experiment completion passed.');
+      "
+
+  - name: Show server logs if test fails
+    if: failure()
+    run: |
+      if [ -f server.log ]; then
+        cat server.log
+      else
+        echo "server.log was not created."
+      fi

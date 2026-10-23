@@ -151,52 +151,68 @@ async function connectNovaAI(question,type="research"){
  if(!response.ok||!data||data.success===false)throw new Error(data?.error||`Request failed (HTTP ${response.status}).`);
  return data;
 }
-function formatAIResult(data){
- // Display only the answer text, never the backend JSON wrapper.
- let answer = data?.answer;
- if (typeof answer !== "string" && typeof data?.result === "string") answer = data.result;
- if (typeof answer !== "string" && typeof data?.result?.answer === "string") answer = data.result.answer;
- if (typeof answer !== "string" && typeof data?.result?.ai?.answer === "string") answer = data.result.ai.answer;
- if (typeof answer !== "string" && typeof data?.ai?.answer === "string") answer = data.ai.answer;
- if (typeof answer !== "string") return "Nova AI returned no readable answer.";
+function formatAIResult(data) {
+let answer =
+data?.answer ??
+data?.result?.answer ??
+data?.result?.ai?.answer ??
+data?.ai?.answer ??
+data?.result;
 
- answer = answer.trim().replace(/\r\n?/g, "\n");
- // Convert inline numbered points (1. ... 2. ...) into separate lines.
- answer = answer.replace(/\s+(?=\d+[.)]\s+)/g, "\n");
- // Remove accidental JSON wrapper text if a backend sends it inside the answer.
- answer = answer.replace(/^\s*\{\s*\"success\"\s*:\s*true\s*,?\s*/i, "");
- answer = answer.replace(/^\s*\"?answer\"?\s*:\s*/i, "");
- answer = answer.replace(/\s*\}\s*$/, "");
- return answer.split("\n").map(line => line.trim()).filter(Boolean).join("\n");
+if (typeof answer !== "string") {
+return "Nova AI returned no readable answer.";
 }
-async function sendMessage(type){
- if(!engineRules[type])return;
- const input=document.getElementById(type+"Input");if(!input||input.disabled)return;
- const question=input.value.trim();if(!question){alert("Enter a question or idea first.");return;}
- input.value="";input.disabled=true;
- const tool=input.closest(".tool");const buttons=tool?tool.querySelectorAll("button"):[];
- buttons.forEach(b=>b.disabled=true);
- addMessage(type,"user",question);
- const chat=document.getElementById(type+"Chat");let status=null;
- if(chat){status=document.createElement("div");status.className="message nova";status.textContent="Nova AI is investigating...";chat.appendChild(status);}
- try{
-  const data=await connectNovaAI(question,type);
-  if(status)status.remove();
-  addMessage(type,"nova",formatAIResult(data)||"Nova AI returned no result.");
- }catch(error){
-  if(status)status.remove();
-  addMessage(type,"nova","Nova AI connection failed: "+error.message+"\n\nYour conversation remains saved in this browser.");
- }finally{
-  input.disabled=false;buttons.forEach(b=>b.disabled=false);renderConversation(type);input.focus();
- }
+
+answer = answer
+.trim()
+.replace(/\r\n?/g, "\n")
+.replace(/^\s*{\s*"success"\s*:\strue\s,?\s*/i, "")
+.replace(/^\s*"answer"\s*:\s*/i, "")
+.replace(/\s*}\s*$/, "")
+.replace(/^["']|["']$/g, "")
+.trim();
+
+// Separate numbered points returned on the same line.
+answer = answer.replace(
+/\s+(?=\d+\s*[.)]\s+)/g,
+"\n"
+);
+
+// Remove existing numbering and bullet symbols before rebuilding the list.
+let lines = answer
+.split(/\n+/)
+.map(line => line.trim())
+.filter(Boolean);
+
+let points = [];
+
+for (const line of lines) {
+const cleanLine = line
+.replace(/^(?:\d+\s*[.)]\s*|[-•*]\s+)/, "")
+.trim();
+
+if (!cleanLine) continue;
+
+// Turn paragraph sentences into separate points.
+const sentences = cleanLine.match(
+  /[^.!?]+(?:[.!?]+(?=\s|$)|$)/g
+);
+
+if (sentences) {
+  sentences.forEach(sentence => {
+    const point = sentence.trim();
+    if (point) points.push(point);
+  });
+} else {
+  points.push(cleanLine);
 }
-function clearConversation(type){
- if(!engineRules[type])return;
- conversations[type]={messages:[]};saveConversations();
- if(["system","ai","technology"].includes(type)){
-  const container=document.getElementById("systemConversation");
-  if(container){container.innerHTML=conversationInterface(type);renderConversation(type);}
- }else renderConversation(type);
+
+}
+
+// Display a clean, systematic numbered list.
+return points
+.map((point, index) => "${index + 1}. ${point}")
+.join("\n");
 }
 
 /* RESEARCH WORKSPACE */

@@ -280,15 +280,13 @@ async function handle(req, res) {
       };
     }
 
-    return send(res, 200, {
-      success: true,
-      result: {
-        ...independent,
-        ai,
-        notice:
-          "Independent analysis completed. External findings are not automatically verified."
-      }
-    });
+    const answer = ai.answer || 
+  "1. AI is temporarily unavailable.\n2. Please try again shortly.";
+
+return send(res, 200, {
+  success: true,
+  answer
+});
   }
 
   if (path === "/api/knowledge" && method === "GET") {

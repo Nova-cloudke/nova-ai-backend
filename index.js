@@ -186,35 +186,44 @@ let lines = answer
 
 let points = [];
 
-for (const line of lines) {
-const cleanLine = line
-.replace(/^(?:\d+\s*[.)]\s*|[-•*]\s+)/, "")
-.trim();
+async function connectNovaAI(question, type = "research") {
+  let response;
 
-if (!cleanLine) continue;
+  try {
+    response = await fetch(`${NOVA_AI_URL}/api/core`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({
+        question: String(question || "").trim(),
+        project: String(type || "research"),
+        mode: "all"
+      })
+    });
+  } catch (error) {
+    throw new Error(
+      "Could not reach Nova AI. Check the Render service and internet connection."
+    );
+  }
 
-// Turn paragraph sentences into separate points.
-const sentences = cleanLine.match(
-  /[^.!?]+(?:[.!?]+(?=\s|$)|$)/g
-);
+  let data;
 
-if (sentences) {
-  sentences.forEach(sentence => {
-    const point = sentence.trim();
-    if (point) points.push(point);
-  });
-} else {
-  points.push(cleanLine);
-}
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error("Nova AI returned an unreadable response.");
+  }
 
-}
+  if (!response.ok || !data || data.success === false) {
+    throw new Error(
+      data?.error || `Request failed (HTTP ${response.status}).`
+    );
+  }
 
-// Display a clean, systematic numbered list.
-return points
-.map((point, index) => "${index + 1}. ${point}")
-.join("\n");
-}
-
+  return data;
+     }
 /* RESEARCH WORKSPACE */
 let researchQuestion="",researchAreas=[];
 function understandResearchQuestion(question){

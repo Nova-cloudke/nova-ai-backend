@@ -65,32 +65,57 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
     let size = 0;
+    let finished = false;
 
     req.on("data", chunk => {
+      if (finished) return;
+
       size += chunk.length;
 
       if (size > 1_000_000) {
+        finished = true;
+
         const error = new Error("Request body is too large.");
         error.statusCode = 413;
         reject(error);
-        req.destroy();
+        req.pause();
         return;
       }
 
-      body += chunk;
+      body += chunk.toString("utf8");
     });
 
     req.on("end", () => {
+      if (finished) return;
+
+      finished = true;
+
+      if (!body.trim()) {
+        resolve({});
+        return;
+      }
+
       try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        const error = new Error("Invalid JSON body.");
-        error.statusCode = 400;
-        reject(error);
+        resolve(JSON.parse(body));
+      } catch (error) {
+        console.error("Invalid request JSON:", error.message);
+        console.error("Received body:", body.slice(0, 300));
+
+        const jsonError = new Error(
+          "Invalid JSON body. Check the request sent by Nova Cloud."
+        );
+
+        jsonError.statusCode = 400;
+        reject(jsonError);
       }
     });
 
-    req.on("error", reject);
+    req.on("error", error => {
+      if (finished) return;
+
+      finished = true;
+      reject(error);
+    });
   });
 }
 

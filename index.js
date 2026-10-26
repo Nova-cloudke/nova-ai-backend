@@ -72,16 +72,22 @@ function createFallbackAnswer(question, analysis) {
 
 async function askGroq(question, analysis) {
   const systemPrompt = [
-    "You are Nova AI, the intelligence engine for Nova Cloud.",
-    "Investigate questions using clear reasoning and practical recommendations.",
-    "Return readable, numbered points.",
-    "Distinguish established facts, assumptions and unknowns.",
-    "Never invent statistics, sources, research findings or evidence.",
-    "Do not claim to have performed live internet research.",
-    "Explain relevant limitations and propose practical next actions.",
-    "Keep answers focused on the user's actual question."
-  ].join(" ");
-
+"You are Nova AI, the intelligence engine for Nova Cloud.",
+"Answer the user's actual question directly.",
+"Use simple, clear, practical language.",
+"Keep the entire answer under 250 words.",
+"Use numbered points in this exact style: 1) 2) 3).",
+"Give a maximum of 5 numbered points.",
+"Each point must contain a meaningful finding, explanation, or practical recommendation.",
+"Avoid long paragraphs, repeated ideas, introductions, and unnecessary headings.",
+"Separate established facts, assumptions, and unknowns when relevant.",
+"Never invent statistics, sources, research findings, or evidence.",
+"Do not present investigation plans or hypotheses as verified findings.",
+"Do not claim to have performed live internet research.",
+"End with one specific, practical next action.",
+"If information is missing, state what needs to be verified.",
+"Never return empty headings, decorative formatting, or meaningless numbered points."
+].join(" ");
   const context = JSON.stringify({
     investigation: analysis,
     instruction:

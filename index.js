@@ -204,18 +204,38 @@ function formatAIResult(data) {
     .replace(/\r\n?/g, "\n");
 
   // Remove a JSON wrapper if the backend included one.
-  try {
-    const parsed = JSON.parse(answer);
-    if (parsed && typeof parsed.answer === "string") {
-      answer = parsed.answer;
-    }
-  } catch (error) {
-    // The answer is ordinary text, so continue.
+function formatAIResult(data) {
+  let answer =
+    data?.answer ??
+    data?.result?.answer ??
+    data?.result?.ai?.answer ??
+    data?.ai?.answer ??
+    data?.result;
+
+  if (typeof answer !== "string") {
+    return "Nova AI returned no readable answer.";
   }
 
+  answer = answer.trim().replace(/\r\n?/g, "\n");
+
+  // Unwrap JSON if the backend returns JSON as a string.
+  try {
+    const parsed = JSON.parse(answer);
+
+    if (parsed && typeof parsed.answer === "string") {
+      answer = parsed.answer;
+    } else if (parsed && typeof parsed.result === "string") {
+      answer = parsed.result;
+    }
+  } catch (error) {
+    // Continue when the response is ordinary text.
+  }
+
+  // Remove JSON wrappers if they appear around the answer.
   answer = answer
     .replace(/^\s*\{\s*"success"\s*:\s*true\s*,?\s*/i, "")
     .replace(/^\s*"answer"\s*:\s*/i, "")
+    .replace(/\s*,?\s*"success"\s*:\s*true\s*$/i, "")
     .replace(/\s*\}\s*$/, "")
     .replace(/^["']|["']$/g, "")
     .trim();
@@ -224,9 +244,13 @@ function formatAIResult(data) {
     return "Nova AI returned an empty answer.";
   }
 
-  // Preserve numbered points when already provided.
+  // Separate numbered points even when they arrive on one line.
+  answer = answer.replace(
+    /\s+(?=\d+\s*[.)]\s+)/g,
+    "\n"
+  );
+
   const lines = answer
-    .replace(/\s+(?=\d+[.)]\s+)/g, "\n")
     .split(/\n+/)
     .map(line => line.trim())
     .filter(Boolean);
@@ -234,19 +258,20 @@ function formatAIResult(data) {
   const points = [];
 
   for (const line of lines) {
+    // Remove existing numbering or bullet symbols.
     const clean = line
-      .replace(/^(?:\d+[.)]\s*|[-•*]\s+)/, "")
+      .replace(/^(?:\d+\s*[.)]\s*|[-•*]\s+)/, "")
       .trim();
 
     if (!clean) continue;
 
-    // Keep existing points together.
-    if (/^\d+[.)]\s/.test(line)) {
+    // Preserve each existing numbered point.
+    if (/^\d+\s*[.)]\s/.test(line)) {
       points.push(clean);
       continue;
     }
 
-    // Split ordinary paragraphs into readable sentences.
+    // Turn ordinary paragraphs into readable points.
     const sentences = clean.match(/[^.!?]+(?:[.!?]+|$)/g);
 
     if (sentences) {
@@ -260,8 +285,46 @@ function formatAIResult(data) {
   }
 
   return points
-    .map((point, index) => `${index + 1}. ${point}`)
+    .map((point, index) => `${index + 1}) ${point}`)
     .join("\n");
+}
+
+async function connectNovaAI(question, type = "research") {
+  let response;
+
+  try {
+    response = await fetch(`${NOVA_AI_URL}/api/core`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        question,
+        project: type,
+        mode: "all"
+      })
+    });
+  } catch (error) {
+    throw new Error(
+      "Could not reach Nova AI. Check your internet connection and Render service."
+    );
+  }
+
+  let data;
+
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error("Nova AI returned an unreadable response.");
+  }
+
+  if (!response.ok || !data || data.success === false) {
+    throw new Error(
+      data?.error || `Nova AI request failed (HTTP ${response.status}).`
+    );
+  }
+
+  return data;
   }
 /* RESEARCH WORKSPACE */
 let researchQuestion="",researchAreas=[];

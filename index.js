@@ -281,6 +281,82 @@ function formatAIResult(data) {
       });
     } else {
       points.push(clean);
+function formatAIResult(data) {
+  let answer =
+    data?.answer ??
+    data?.result?.answer ??
+    data?.result?.ai?.answer ??
+    data?.ai?.answer ??
+    data?.result;
+
+  if (typeof answer !== "string") {
+    if (answer && typeof answer === "object") {
+      answer = answer.answer ?? answer.result;
+    }
+
+    if (typeof answer !== "string") {
+      return "Nova AI returned no readable answer.";
+    }
+  }
+
+  answer = answer.trim().replace(/\r\n?/g, "\n");
+
+  // Decode a JSON response if the answer contains JSON text.
+  try {
+    const parsed = JSON.parse(answer);
+
+    if (parsed && typeof parsed.answer === "string") {
+      answer = parsed.answer;
+    } else if (parsed && typeof parsed.result === "string") {
+      answer = parsed.result;
+    }
+  } catch (error) {
+    // The answer is ordinary text, so continue.
+  }
+
+  answer = answer
+    .replace(/^\s*\{\s*"success"\s*:\s*true\s*,?\s*/i, "")
+    .replace(/^\s*"answer"\s*:\s*/i, "")
+    .replace(/\s*,?\s*"success"\s*:\s*true\s*$/i, "")
+    .replace(/\s*\}\s*$/, "")
+    .replace(/^["']|["']$/g, "")
+    .trim();
+
+  if (!answer) {
+    return "Nova AI returned an empty answer.";
+  }
+
+  // Put numbered points on separate lines.
+  answer = answer.replace(/\s+(?=\d+\s*[.)]\s+)/g, "\n");
+
+  const lines = answer
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const points = [];
+
+  for (const line of lines) {
+    const clean = line
+      .replace(/^(?:\d+\s*[.)]\s*|[-•*]\s+)/, "")
+      .trim();
+
+    if (!clean) continue;
+
+    if (/^\d+\s*[.)]\s/.test(line)) {
+      points.push(clean);
+      continue;
+    }
+
+    const sentences = clean.match(/[^.!?]+(?:[.!?]+|$)/g);
+
+    if (sentences) {
+      sentences.forEach(sentence => {
+        const point = sentence.trim();
+        if (point) points.push(point);
+      });
+    } else {
+      points.push(clean);
     }
   }
 
@@ -325,7 +401,7 @@ async function connectNovaAI(question, type = "research") {
   }
 
   return data;
-  }
+}
 /* RESEARCH WORKSPACE */
 let researchQuestion="",researchAreas=[];
 function understandResearchQuestion(question){

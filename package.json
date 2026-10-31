@@ -1,14 +1,16 @@
-
 {
-  "name": "nova-ai",
-  "version": "3.1.0",
-  "description": "Nova AI intelligence backend for Nova Cloud",
-  "main": "index.js",
+  "name": "nova-connect",
+  "version": "1.0.0",
+  "description": "Nova Connect backend",
+  "main": "Server.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "node --check index.js && node --check storage.js && node --check knowledge.js && node --check evidence.js && node --check experiments.js && node --check intelligence.js"
+    "start": "node Server.js"
   },
-  "engines": {
-    "node": ">=20"
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "pg": "^8.16.3"
   }
 }

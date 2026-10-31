@@ -1,4 +1,14 @@
-const experiments = [];
+
+"use strict";
+
+const storage = require("./storage.js");
+
+const STORAGE_NAME = "experiments";
+const experiments = storage.loadData(STORAGE_NAME);
+
+function saveExperiments() {
+  storage.saveData(STORAGE_NAME, experiments);
+}
 
 function createExperiment({
   question,
@@ -6,7 +16,11 @@ function createExperiment({
   method,
   expectedOutcome = ""
 }) {
-  if (!question || !hypothesis || !method) {
+  if (
+    typeof question !== "string" || !question.trim() ||
+    typeof hypothesis !== "string" || !hypothesis.trim() ||
+    typeof method !== "string" || !method.trim()
+  ) {
     throw new Error(
       "Question, hypothesis, and method are required."
     );
@@ -19,9 +33,9 @@ function createExperiment({
 
   const experiment = {
     id: nextId,
-    question: String(question).trim(),
-    hypothesis: String(hypothesis).trim(),
-    method: String(method).trim(),
+    question: question.trim(),
+    hypothesis: hypothesis.trim(),
+    method: method.trim(),
     expectedOutcome: String(expectedOutcome).trim(),
     observations: [],
     conclusion: null,
@@ -30,6 +44,8 @@ function createExperiment({
   };
 
   experiments.push(experiment);
+  saveExperiments();
+
   return experiment;
 }
 
@@ -40,16 +56,25 @@ function addObservation(id, observation) {
     throw new Error("Experiment not found.");
   }
 
-  if (!observation || !String(observation).trim()) {
+  if (
+    typeof observation !== "string" ||
+    !observation.trim()
+  ) {
     throw new Error("An observation is required.");
   }
 
+  if (!Array.isArray(experiment.observations)) {
+    experiment.observations = [];
+  }
+
   experiment.observations.push({
-    observation: String(observation).trim(),
+    observation: observation.trim(),
     recordedAt: new Date().toISOString()
   });
 
   experiment.status = "in_progress";
+  saveExperiments();
+
   return experiment;
 }
 
@@ -60,14 +85,18 @@ function completeExperiment(id, conclusion) {
     throw new Error("Experiment not found.");
   }
 
-  if (!conclusion || !String(conclusion).trim()) {
+  if (
+    typeof conclusion !== "string" ||
+    !conclusion.trim()
+  ) {
     throw new Error("A conclusion is required.");
   }
 
-  experiment.conclusion = String(conclusion).trim();
+  experiment.conclusion = conclusion.trim();
   experiment.status = "completed";
   experiment.completedAt = new Date().toISOString();
 
+  saveExperiments();
   return experiment;
 }
 
@@ -80,21 +109,29 @@ function getExperiment(id) {
 function getAllExperiments() {
   return experiments.map(item => ({
     ...item,
-    observations: [...item.observations]
+    observations: [
+      ...(item.observations || [])
+    ]
   }));
 }
 
 function searchExperiments(query) {
-  const term = String(query || "").toLowerCase().trim();
+  const term = String(query || "")
+    .toLowerCase()
+    .trim();
+
   if (!term) return [];
 
-  return experiments.filter(item =>
+  return getAllExperiments().filter(item =>
     [
       item.question,
       item.hypothesis,
       item.method,
       item.expectedOutcome,
-      item.conclusion || ""
+      item.conclusion || "",
+      ...(item.observations || []).map(
+        entry => entry.observation
+      )
     ].some(value =>
       String(value).toLowerCase().includes(term)
     )
@@ -112,7 +149,13 @@ function loadExperiments(entries) {
     ...entries
   );
 
+  saveExperiments();
   return getAllExperiments();
+}
+
+function clearExperiments() {
+  experiments.length = 0;
+  saveExperiments();
 }
 
 module.exports = {
@@ -122,5 +165,7 @@ module.exports = {
   getExperiment,
   getAllExperiments,
   searchExperiments,
-  loadExperiments
+  loadExperiments,
+  clearExperiments
 };
+      

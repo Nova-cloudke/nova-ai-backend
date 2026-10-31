@@ -1,4 +1,14 @@
-const evidenceRecords = [];
+
+"use strict";
+
+const storage = require("./storage.js");
+
+const STORAGE_NAME = "evidence";
+const evidenceRecords = storage.loadData(STORAGE_NAME);
+
+function saveEvidence() {
+  storage.saveData(STORAGE_NAME, evidenceRecords);
+}
 
 function evaluateEvidence({
   claim,
@@ -6,7 +16,11 @@ function evaluateEvidence({
   evidence,
   type = "unverified"
 }) {
-  if (!claim || !source || !evidence) {
+  if (
+    typeof claim !== "string" || !claim.trim() ||
+    typeof source !== "string" || !source.trim() ||
+    typeof evidence !== "string" || !evidence.trim()
+  ) {
     throw new Error(
       "Claim, source, and evidence are required."
     );
@@ -30,19 +44,24 @@ function evaluateEvidence({
 
   const record = {
     id: nextId,
-    claim: String(claim).trim(),
-    source: String(source).trim(),
-    evidence: String(evidence).trim(),
+    claim: claim.trim(),
+    source: source.trim(),
+    evidence: evidence.trim(),
     status: type,
     evaluatedAt: new Date().toISOString()
   };
 
   evidenceRecords.push(record);
+  saveEvidence();
+
   return record;
 }
 
 function searchEvidence(query) {
-  const term = String(query || "").toLowerCase().trim();
+  const term = String(query || "")
+    .toLowerCase()
+    .trim();
+
   if (!term) return [];
 
   return evidenceRecords.filter(record =>
@@ -58,7 +77,9 @@ function searchEvidence(query) {
 }
 
 function getAllEvidence() {
-  return [...evidenceRecords];
+  return evidenceRecords.map(record => ({
+    ...record
+  }));
 }
 
 function loadEvidence(entries) {
@@ -72,12 +93,20 @@ function loadEvidence(entries) {
     ...entries
   );
 
+  saveEvidence();
   return getAllEvidence();
+}
+
+function clearEvidence() {
+  evidenceRecords.length = 0;
+  saveEvidence();
 }
 
 module.exports = {
   evaluateEvidence,
   searchEvidence,
   getAllEvidence,
-  loadEvidence
+  loadEvidence,
+  clearEvidence
 };
+    

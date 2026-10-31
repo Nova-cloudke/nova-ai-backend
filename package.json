@@ -1,9 +1,14 @@
+
 {
   "name": "nova-ai",
-  "version": "2.5.0",
+  "version": "3.1.0",
   "description": "Nova AI intelligence backend for Nova Cloud",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --check index.js && node --check storage.js && node --check knowledge.js && node --check evidence.js && node --check experiments.js && node --check intelligence.js"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,4 +1,14 @@
-const knowledgeBase = [];
+
+"use strict";
+
+const storage = require("./storage.js");
+
+const STORAGE_NAME = "knowledge";
+const knowledgeBase = storage.loadData(STORAGE_NAME);
+
+function saveKnowledge() {
+  storage.saveData(STORAGE_NAME, knowledgeBase);
+}
 
 function addKnowledge({
   topic,
@@ -7,8 +17,17 @@ function addKnowledge({
   confidence = "unverified",
   tags = []
 }) {
-  if (!topic || !content) {
+  if (
+    typeof topic !== "string" ||
+    !topic.trim() ||
+    typeof content !== "string" ||
+    !content.trim()
+  ) {
     throw new Error("Topic and content are required.");
+  }
+
+  if (!Array.isArray(tags)) {
+    throw new Error("Tags must be an array.");
   }
 
   const nextId = Math.max(
@@ -18,15 +37,17 @@ function addKnowledge({
 
   const entry = {
     id: nextId,
-    topic: String(topic).trim(),
-    content: String(content).trim(),
+    topic: topic.trim(),
+    content: content.trim(),
     source: String(source).trim(),
-    confidence,
-    tags,
+    confidence: String(confidence),
+    tags: tags.map(tag => String(tag).trim()),
     createdAt: new Date().toISOString()
   };
 
   knowledgeBase.push(entry);
+  saveKnowledge();
+
   return entry;
 }
 
@@ -47,9 +68,11 @@ function searchKnowledge(query) {
         ...(entry.tags || [])
       ].join(" ").toLowerCase();
 
-      const score = words.filter(word =>
-        text.includes(word)
-      ).length;
+      const score = words.reduce(
+        (total, word) =>
+          total + (text.includes(word) ? 1 : 0),
+        0
+      );
 
       return { ...entry, score };
     })
@@ -58,7 +81,10 @@ function searchKnowledge(query) {
 }
 
 function getAllKnowledge() {
-  return [...knowledgeBase];
+  return knowledgeBase.map(item => ({
+    ...item,
+    tags: [...(item.tags || [])]
+  }));
 }
 
 function loadKnowledge(entries) {
@@ -66,12 +92,19 @@ function loadKnowledge(entries) {
     throw new Error("Knowledge data must be an array.");
   }
 
-  knowledgeBase.splice(0, knowledgeBase.length, ...entries);
+  knowledgeBase.splice(
+    0,
+    knowledgeBase.length,
+    ...entries
+  );
+
+  saveKnowledge();
   return getAllKnowledge();
 }
 
 function clearKnowledge() {
   knowledgeBase.length = 0;
+  saveKnowledge();
 }
 
 module.exports = {
@@ -81,3 +114,4 @@ module.exports = {
   loadKnowledge,
   clearKnowledge
 };
+                         

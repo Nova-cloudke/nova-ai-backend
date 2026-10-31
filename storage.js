@@ -1,73 +1,129 @@
-const fs = require("fs");
-const path = require("path");
 
-const DATA_DIR = path.join(__dirname, "data");
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+
+const DATA_DIR = process.env.NOVA_DATA_DIR
+  ? path.resolve(process.env.NOVA_DATA_DIR)
+  : path.join(__dirname, "data");
+
+const STORAGE_VERSION = "3.1.0";
 
 function ensureDataDirectory() {
-if (!fs.existsSync(DATA_DIR)) {
-fs.mkdirSync(DATA_DIR, { recursive: true });
-}
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 function getFilePath(name) {
-if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-throw new Error("Invalid storage name.");
-}
+  if (
+    typeof name !== "string" ||
+    !/^[a-zA-Z0-9_-]+$/.test(name)
+  ) {
+    throw new Error("Invalid storage name.");
+  }
 
-return path.join(DATA_DIR, `${name}.json`);
+  return path.join(DATA_DIR, `${name}.json`);
 }
 
 function saveData(name, data) {
-ensureDataDirectory();
+  ensureDataDirectory();
 
-const filePath = getFilePath(name);
-const temporaryPath = `${filePath}.tmp`;
+  const filePath = getFilePath(name);
+  const temporaryPath =
+    `${filePath}.${process.pid}.tmp`;
 
-fs.writeFileSync(
-temporaryPath,
-JSON.stringify(data, null, 2),
-"utf8"
-);
+  let serialized;
 
-fs.renameSync(temporaryPath, filePath);
+  try {
+    serialized = JSON.stringify(data, null, 2);
 
-return {
-success: true,
-name,
-savedAt: new Date().toISOString()
-};
+    if (serialized === undefined) {
+      throw new Error("Data cannot be converted to JSON.");
+    }
+
+    fs.writeFileSync(
+      temporaryPath,
+      serialized,
+      "utf8"
+    );
+
+    fs.renameSync(temporaryPath, filePath);
+
+    return {
+      success: true,
+      name,
+      storageVersion: STORAGE_VERSION,
+      savedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    try {
+      if (fs.existsSync(temporaryPath)) {
+        fs.unlinkSync(temporaryPath);
+      }
+    } catch (cleanupError) {
+      console.error(
+        "Temporary file cleanup failed:",
+        cleanupError.message
+      );
+    }
+
+    throw error;
+  }
 }
 
 function loadData(name) {
-ensureDataDirectory();
+  ensureDataDirectory();
 
-const filePath = getFilePath(name);
+  const filePath = getFilePath(name);
 
-if (!fs.existsSync(filePath)) {
-return [];
-}
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
 
-try {
-return JSON.parse(fs.readFileSync(filePath, "utf8"));
-} catch {
-throw new Error(`Stored data for "${name}" is invalid.`);
-}
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(content);
+
+    return data;
+  } catch (error) {
+    throw new Error(
+      `Unable to load stored data "${name}": ${error.message}`
+    );
+  }
 }
 
 function deleteData(name) {
-ensureDataDirectory();
+  ensureDataDirectory();
 
-const filePath = getFilePath(name);
+  const filePath = getFilePath(name);
 
-if (fs.existsSync(filePath)) {
-fs.unlinkSync(filePath);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+
+  return {
+    success: true,
+    name
+  };
 }
 
-return { success: true, name };
+function getStorageInfo() {
+  ensureDataDirectory();
+
+  return {
+    success: true,
+    storageVersion: STORAGE_VERSION,
+    storageType: "JSON",
+    directory: DATA_DIR,
+    persistent: Boolean(process.env.NOVA_DATA_DIR)
+  };
 }
 
 module.exports = {
-saveData,
-loadData,
-deleteData
+  STORAGE_VERSION,
+  saveData,
+  loadData,
+  deleteData,
+  getStorageInfo
 };
+                   

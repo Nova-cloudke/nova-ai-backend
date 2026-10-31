@@ -1,3 +1,4 @@
+
 name: Test Nova AI
 
 on:
@@ -17,17 +18,79 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install dependencies
+        run: npm install
+
       - name: Check JavaScript files
+        run: npm test
+
+      - name: Test storage and intelligence engines
         run: |
-          node --check index.js
-          node --check storage.js
-          node --check experiments.js
-          node --check knowledge.js
-          node --check evidence.js
-          node --check intelligence.js
+          export NOVA_DATA_DIR="$RUNNER_TEMP/nova-ai-test-data"
+
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+
+          const knowledge = require("./knowledge.js");
+          const evidence = require("./evidence.js");
+          const experiments = require("./experiments.js");
+          const storage = require("./storage.js");
+          const intelligence = require("./intelligence.js");
+
+          const item = knowledge.addKnowledge({
+            topic: "Test topic",
+            content: "Nova AI storage test",
+            tags: ["test"]
+          });
+
+          assert.ok(item.id);
+          assert.ok(knowledge.searchKnowledge("Nova").length > 0);
+
+          const record = evidence.evaluateEvidence({
+            claim: "Test claim",
+            source: "Automated test",
+            evidence: "Test evidence",
+            type: "verified"
+          });
+
+          assert.ok(record.id);
+          assert.ok(evidence.searchEvidence("Test claim").length > 0);
+
+          const experiment = experiments.createExperiment({
+            question: "Does storage work?",
+            hypothesis: "Storage works",
+            method: "Automated test"
+          });
+
+          assert.ok(experiment.id);
+
+          experiments.addObservation(
+            experiment.id,
+            "Storage test passed"
+          );
+
+          const completed = experiments.completeExperiment(
+            experiment.id,
+            "Test successful"
+          );
+
+          assert.equal(completed.status, "completed");
+
+          assert.ok(storage.getStorageInfo());
+          assert.equal(typeof intelligence.analyze, "function");
+
+          console.log("Knowledge test passed.");
+          console.log("Evidence test passed.");
+          console.log("Experiment test passed.");
+          console.log("Storage test passed.");
+          console.log("Intelligence engine loaded.");
+
+          NODE
 
       - name: Test backend health
         run: |
+          export NOVA_DATA_DIR="$RUNNER_TEMP/nova-ai-health-data"
+
           node index.js &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
@@ -42,4 +105,4 @@ jobs:
 
           echo "Backend health check failed."
           exit 1
-  
+          

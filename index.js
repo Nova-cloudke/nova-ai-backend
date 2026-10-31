@@ -1,10 +1,17 @@
+
 "use strict";
 
 const http = require("node:http");
+
 const intelligence = require("./intelligence.js");
+const knowledgeEngine = require("./knowledge.js");
+const evidenceEngine = require("./evidence.js");
+const experimentEngine = require("./experiments.js");
+const storage = require("./storage.js");
 
 const PORT = process.env.PORT || 3000;
-const VERSION = "2.8.1";
+const VERSION = "3.1.0";
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -44,9 +51,20 @@ function readBody(req) {
   });
 }
 
+function getStoredContext() {
+  return {
+    knowledge: knowledgeEngine.getAllKnowledge(),
+    evidence: evidenceEngine.getAllEvidence(),
+    experiments: experimentEngine.getAllExperiments()
+  };
+}
+
 function createFallbackAnswer(question, analysis) {
-  const plan = analysis?.investigationPlan;
-  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+  const steps = Array.isArray(
+    analysis?.investigationPlan?.steps
+  )
+    ? analysis.investigationPlan.steps
+    : [];
 
   const points = [
     `Question: ${question}`,
@@ -54,17 +72,17 @@ function createFallbackAnswer(question, analysis) {
   ];
 
   steps.forEach((step, index) => {
-    points.push(`${index + 1}. ${step}`);
+    points.push(`${index + 1}) ${step}`);
   });
 
-  if (Array.isArray(analysis?.knowledgeGaps)) {
+  if (analysis?.knowledgeGaps?.length) {
     points.push(
-      `${points.length - 1}. Information gaps: ${analysis.knowledgeGaps.join(" ")}`
+      `${points.length - 1}) Information gaps: ${analysis.knowledgeGaps.join(" ")}`
     );
   }
 
   points.push(
-    "Next action: Gather relevant evidence and test the most important assumption before making a decision."
+    "Next action: Gather relevant evidence and test the most important assumption."
   );
 
   return points.join("\n");
@@ -72,27 +90,28 @@ function createFallbackAnswer(question, analysis) {
 
 async function askGroq(question, analysis) {
   const systemPrompt = [
-"You are Nova AI, the intelligence engine for Nova Cloud.",
-"Answer the user's actual question directly.",
-"Use simple, clear, practical language.",
-"Keep the entire answer under 250 words.",
-"Use numbered points in this exact style: 1) 2) 3).",
-"Follow the number of points explicitly requested by the user. If the user asks for 10 points, provide exactly 10 numbered points.",
-"If the user does not specify a number, provide 3 to 5 useful numbered points.",
-"Each point must contain a meaningful finding, explanation, or practical recommendation.",
-"Avoid long paragraphs, repeated ideas, introductions, and unnecessary headings.",
-"Separate established facts, assumptions, and unknowns when relevant.",
-"Never invent statistics, sources, research findings, or evidence.",
-"Do not present investigation plans or hypotheses as verified findings.",
-"Do not claim to have performed live internet research.",
-"End with one specific, practical next action.",
-"If information is missing, state what needs to be verified.",
-"Never return empty headings, decorative formatting, or meaningless numbered points."
-].join(" ");
+    "You are Nova AI, the intelligence engine for Nova Cloud.",
+    "Answer the user's actual question directly.",
+    "Use simple, clear and practical language.",
+    "Keep the entire answer under 250 words.",
+    "Use numbered points in this exact style: 1) 2) 3).",
+    "Follow the number of points explicitly requested by the user.",
+    "If no number is requested, provide 3 to 5 useful points.",
+    "Each point must contain meaningful information.",
+    "Avoid repeated ideas and unnecessary introductions.",
+    "Separate established facts, assumptions and unknowns.",
+    "Never invent statistics, sources or research findings.",
+    "Do not present hypotheses as verified findings.",
+    "Do not claim to have performed live internet research.",
+    "Use stored knowledge, evidence and experiments where relevant.",
+    "Treat stored records according to their evidence status.",
+    "End with one specific practical next action."
+  ].join(" ");
+
   const context = JSON.stringify({
     investigation: analysis,
     instruction:
-      "Use this structured analysis as context. Do not treat its plans or hypotheses as verified evidence."
+      "Use this structured analysis as context. Do not treat plans, assumptions or hypotheses as verified evidence."
   });
 
   const response = await fetch(
@@ -194,13 +213,18 @@ async function handleCore(req, res) {
   let analysis;
 
   try {
-    analysis = intelligence.analyze(question, mode, {
-      knowledge: [],
-      evidence: [],
-      experiments: []
-    });
+    const context = getStoredContext();
+
+    analysis = intelligence.analyze(
+      question,
+      mode,
+      context
+    );
   } catch (error) {
-    console.error("Independent intelligence error:", error.message);
+    console.error(
+      "Independent intelligence error:",
+      error.message
+    );
 
     return sendJSON(res, 500, {
       success: false,
@@ -230,15 +254,30 @@ async function handleCore(req, res) {
     analysis,
     version: VERSION,
     aiProvider,
-    independentIntelligence: true
+    independentIntelligence: true,
+
+    storedData: {
+      knowledge: analysis.existingData.knowledge.length,
+      evidence: analysis.existingData.evidence.length,
+      experiments: analysis.existingData.experiments.length
+    }
   });
 }
 
 const server = http.createServer(async (req, res) => {
-  const pathname = new URL(
-    req.url,
-    `http://${req.headers.host || "localhost"}`
-  ).pathname;
+  let pathname;
+
+  try {
+    pathname = new URL(
+      req.url,
+      `http://${req.headers.host || "localhost"}`
+    ).pathname;
+  } catch {
+    return sendJSON(res, 400, {
+      success: false,
+      error: "Invalid request URL."
+    });
+  }
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -261,20 +300,49 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/api/health") {
-    return sendJSON(res, 200, {
-      success: true,
-      name: "Nova AI",
-      version: VERSION,
-      status: "healthy",
-      engines: [
-        "opportunityDiscovery",
-        "novaGenesis"
-      ],
-      independentIntelligence: true,
-      aiConfigured: Boolean(GROQ_API_KEY),
-      aiProvider: GROQ_API_KEY ? "Groq" : "independent",
-      aiModel: GROQ_API_KEY ? GROQ_MODEL : null
-    });
+    try {
+      const context = getStoredContext();
+      const storageInfo = storage.getStorageInfo();
+
+      return sendJSON(res, 200, {
+        success: true,
+        name: "Nova AI",
+        version: VERSION,
+        status: "healthy",
+
+        engines: [
+          "knowledge",
+          "evidence",
+          "experiments",
+          "intelligence",
+          "opportunityDiscovery",
+          "novaGenesis"
+        ],
+
+        storedData: {
+          knowledge: context.knowledge.length,
+          evidence: context.evidence.length,
+          experiments: context.experiments.length
+        },
+
+        storage: storageInfo,
+
+        independentIntelligence: true,
+        aiConfigured: Boolean(GROQ_API_KEY),
+        aiProvider: GROQ_API_KEY ? "Groq" : "independent",
+        aiModel: GROQ_API_KEY ? GROQ_MODEL : null
+      });
+    } catch (error) {
+      console.error("Health check failed:", error.message);
+
+      return sendJSON(res, 500, {
+        success: false,
+        name: "Nova AI",
+        version: VERSION,
+        status: "unhealthy",
+        error: "Engine or storage initialization failed."
+      });
+    }
   }
 
   if (req.method === "POST" && pathname === "/api/core") {
@@ -301,5 +369,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Nova AI ${VERSION} running on port ${PORT}`);
+  console.log(
+    `Nova AI ${VERSION} running on port ${PORT}`
+  );
 });
+                     

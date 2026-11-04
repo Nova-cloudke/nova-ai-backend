@@ -84,13 +84,12 @@ jobs:
           console.log("Experiment test passed.");
           console.log("Storage test passed.");
           console.log("Intelligence engine loaded.");
-
           NODE
 
       - name: Test backend health
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          export NOVA_DATA_DIR="$RUNNER_TEMP/nova-ai-health-data"
-
           node index.js &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT

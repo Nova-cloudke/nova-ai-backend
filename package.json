@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --check index.js && node --check storage.js && node --check knowledge.js && node --check evidence.js && node --check experiments.js && node --check intelligence.js"
+    "test": "node --check index.js && node --check storage.js && node --check knowledge.js && node --check evidence.js && node --check experiments.js && node --check intelligence.js && node --check database.js && node --check postgres-engines.js"
   },
   "engines": {
     "node": ">=20"

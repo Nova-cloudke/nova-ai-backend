@@ -49,11 +49,34 @@ function readBody(req) {
   });
 }
 
+// Read stored data without allowing database failure
+// to crash independent intelligence.
 function getStoredContext() {
+  function readSafely(name, getter) {
+    try {
+      const result = getter();
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error(`${name} storage unavailable:`, error.message);
+      return [];
+    }
+  }
+
   return {
-    knowledge: postgresEngines.getAllKnowledge(),
-    evidence: postgresEngines.getAllEvidence(),
-    experiments: postgresEngines.getAllExperiments()
+    knowledge: readSafely(
+      "Knowledge",
+      () => postgresEngines.getAllKnowledge()
+    ),
+
+    evidence: readSafely(
+      "Evidence",
+      () => postgresEngines.getAllEvidence()
+    ),
+
+    experiments: readSafely(
+      "Experiments",
+      () => postgresEngines.getAllExperiments()
+    )
   };
 }
 
@@ -75,7 +98,7 @@ function createFallbackAnswer(question, analysis) {
 
   if (analysis?.knowledgeGaps?.length) {
     points.push(
-      `${points.length - 1}) Information gaps: ${analysis.knowledgeGaps.join(" ")}`
+      `Information gaps: ${analysis.knowledgeGaps.join(" ")}`
     );
   }
 
@@ -296,45 +319,47 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && pathname === "/api/health") {
+    const context = getStoredContext();
+
+    let storageInfo;
+
     try {
-      const context = getStoredContext();
-      const storageInfo = await database.getStorageInfo();
-
-      return sendJSON(res, 200, {
-        success: true,
-        name: "Nova AI",
-        version: VERSION,
-        status: "healthy",
-        engines: [
-          "knowledge",
-          "evidence",
-          "experiments",
-          "intelligence",
-          "opportunityDiscovery",
-          "novaGenesis"
-        ],
-        storedData: {
-          knowledge: context.knowledge.length,
-          evidence: context.evidence.length,
-          experiments: context.experiments.length
-        },
-        storage: storageInfo,
-        independentIntelligence: true,
-        aiConfigured: Boolean(GROQ_API_KEY),
-        aiProvider: GROQ_API_KEY ? "Groq" : "independent",
-        aiModel: GROQ_API_KEY ? GROQ_MODEL : null
-      });
+      storageInfo = await database.getStorageInfo();
     } catch (error) {
-      console.error("Health check failed:", error.message);
-
-      return sendJSON(res, 500, {
+      storageInfo = {
         success: false,
-        name: "Nova AI",
-        version: VERSION,
-        status: "unhealthy",
-        error: "Database or engine check failed."
-      });
+        persistent: false,
+        status: "unavailable",
+        error: error.message
+      };
     }
+
+    const storageConnected = storageInfo.success === true;
+
+    return sendJSON(res, 200, {
+      success: true,
+      name: "Nova AI",
+      version: VERSION,
+      status: storageConnected ? "healthy" : "degraded",
+      engines: [
+        "knowledge",
+        "evidence",
+        "experiments",
+        "intelligence",
+        "opportunityDiscovery",
+        "novaGenesis"
+      ],
+      storedData: {
+        knowledge: context.knowledge.length,
+        evidence: context.evidence.length,
+        experiments: context.experiments.length
+      },
+      storage: storageInfo,
+      independentIntelligence: true,
+      aiConfigured: Boolean(GROQ_API_KEY),
+      aiProvider: GROQ_API_KEY ? "Groq" : "independent",
+      aiModel: GROQ_API_KEY ? GROQ_MODEL : null
+    });
   }
 
   if (req.method === "POST" && pathname === "/api/core") {
@@ -360,24 +385,47 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-async function startServer() {
-  try {
-    await postgresEngines.initializeEngines();
+// Start HTTP first. Database initialization runs separately.
+function startServer() {
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(
+      `Nova AI ${VERSION} running on port ${PORT}.`
+    );
 
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(
-        `Nova AI ${VERSION} connected to Supabase and running on port ${PORT}`
+    initializeDatabaseEngines();
+  });
+}
+
+async function initializeDatabaseEngines() {
+  try {
+    const result = await postgresEngines.initializeEngines();
+
+    if (result === false) {
+      console.warn(
+        "Nova AI: Database unavailable. Continuing with independent intelligence."
       );
-    });
+      return;
+    }
+
+    console.log(
+      "Nova AI PostgreSQL engines initialized successfully."
+    );
   } catch (error) {
     console.error(
       "Nova AI database initialization failed:",
       error.message
     );
 
-    process.exit(1);
+    console.warn(
+      "Nova AI HTTP server remains available. Persistent storage is unavailable."
+    );
   }
 }
 
+server.on("error", error => {
+  console.error("Nova AI server error:", error);
+  process.exitCode = 1;
+});
+
 startServer();
-           
+                     

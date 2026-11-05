@@ -4,10 +4,8 @@
 const http = require("node:http");
 
 const intelligence = require("./intelligence.js");
-const knowledgeEngine = require("./knowledge.js");
-const evidenceEngine = require("./evidence.js");
-const experimentEngine = require("./experiments.js");
-const storage = require("./storage.js");
+const postgresEngines = require("./postgres-engines.js");
+const database = require("./database.js");
 
 const PORT = process.env.PORT || 3000;
 const VERSION = "3.1.0";
@@ -53,9 +51,9 @@ function readBody(req) {
 
 function getStoredContext() {
   return {
-    knowledge: knowledgeEngine.getAllKnowledge(),
-    evidence: evidenceEngine.getAllEvidence(),
-    experiments: experimentEngine.getAllExperiments()
+    knowledge: postgresEngines.getAllKnowledge(),
+    evidence: postgresEngines.getAllEvidence(),
+    experiments: postgresEngines.getAllExperiments()
   };
 }
 
@@ -241,7 +239,6 @@ async function handleCore(req, res) {
       aiProvider = "Groq";
     } catch (error) {
       console.error("Groq unavailable:", error.message);
-
       answer = createFallbackAnswer(question, analysis);
     }
   } else {
@@ -255,7 +252,6 @@ async function handleCore(req, res) {
     version: VERSION,
     aiProvider,
     independentIntelligence: true,
-
     storedData: {
       knowledge: analysis.existingData.knowledge.length,
       evidence: analysis.existingData.evidence.length,
@@ -302,14 +298,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && pathname === "/api/health") {
     try {
       const context = getStoredContext();
-      const storageInfo = storage.getStorageInfo();
+      const storageInfo = await database.getStorageInfo();
 
       return sendJSON(res, 200, {
         success: true,
         name: "Nova AI",
         version: VERSION,
         status: "healthy",
-
         engines: [
           "knowledge",
           "evidence",
@@ -318,15 +313,12 @@ const server = http.createServer(async (req, res) => {
           "opportunityDiscovery",
           "novaGenesis"
         ],
-
         storedData: {
           knowledge: context.knowledge.length,
           evidence: context.evidence.length,
           experiments: context.experiments.length
         },
-
         storage: storageInfo,
-
         independentIntelligence: true,
         aiConfigured: Boolean(GROQ_API_KEY),
         aiProvider: GROQ_API_KEY ? "Groq" : "independent",
@@ -340,7 +332,7 @@ const server = http.createServer(async (req, res) => {
         name: "Nova AI",
         version: VERSION,
         status: "unhealthy",
-        error: "Engine or storage initialization failed."
+        error: "Database or engine check failed."
       });
     }
   }
@@ -368,9 +360,24 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `Nova AI ${VERSION} running on port ${PORT}`
-  );
-});
-                     
+async function startServer() {
+  try {
+    await postgresEngines.initializeEngines();
+
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(
+        `Nova AI ${VERSION} connected to Supabase and running on port ${PORT}`
+      );
+    });
+  } catch (error) {
+    console.error(
+      "Nova AI database initialization failed:",
+      error.message
+    );
+
+    process.exit(1);
+  }
+}
+
+startServer();
+           

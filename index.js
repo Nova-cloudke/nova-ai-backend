@@ -237,6 +237,100 @@ async function askGroq(question, analysis) {
           },
           {
             role: "user",
+
+async function askGroq(question, analysis) {
+  const isGenesis = Boolean(analysis?.novaGenesis);
+
+  // Each request gets its own point count and output budget.
+  const requestedPoints = getRequestedPointCount(question);
+
+  const maxCompletionTokens = Math.min(
+    65536,
+    requestedPoints
+      ? 1800 + requestedPoints * 160
+      : isGenesis ? 5000 : 1200
+  );
+
+  const pointInstruction = requestedPoints
+    ? `The user requests exactly ${requestedPoints} meaningful numbered points.
+       Deliver exactly ${requestedPoints} points.
+       Number them continuously from 1 to ${requestedPoints}.
+       Do not silently reduce the requested count.`
+    : "Choose an appropriate answer length based on the complexity of the question.";
+
+  const systemPrompt = [
+    "You are Nova AI, the intelligence engine for Nova Cloud.",
+    "Answer the user's actual question directly.",
+    "Use clear, detailed, practical language.",
+    "Every numbered point must contribute meaningful information.",
+    pointInstruction,
+
+    "Separate facts, assumptions, hypotheses and unknowns.",
+    "Never invent statistics, sources or research findings.",
+    "Never present hypotheses as verified evidence.",
+    "Never claim to have performed live research unless it occurred.",
+    "Use stored knowledge, evidence and experiments where relevant.",
+
+    isGenesis
+      ? [
+          "NOVA GENESIS INVESTIGATION FRAMEWORK:",
+          "Always follow all eight investigation stages in their original order.",
+          "The eight stages are the permanent investigation framework, not the answer point limit.",
+
+          "Stage 1: Understand the question and define the actual problem.",
+          "Stage 2: Examine existing knowledge and relevant information.",
+          "Stage 3: Identify knowledge gaps and unanswered questions.",
+          "Stage 4: Develop testable hypotheses and explain their rationale.",
+          "Stage 5: Design practical experiments with clear methods and measurements.",
+          "Stage 6: Identify, collect and evaluate relevant evidence.",
+          "Stage 7: Update conclusions according to the available evidence.",
+          "Stage 8: Recommend practical solutions and next actions.",
+
+          "Explain every stage meaningfully. Do not merely list stage headings.",
+          "For each stage, provide relevant analysis, explanations and practical details.",
+          "Distribute the requested numbered points across all eight stages.",
+          "Keep numbering continuous throughout the entire investigation.",
+          "Use clear stage headings without restarting point numbering.",
+          "For stages without collected evidence, clearly identify what remains unverified.",
+          "Connect findings from earlier stages to later stages.",
+          "Do not repeat information just to reach the requested point count.",
+          "Do not invent evidence to make the investigation appear complete."
+        ].join(" ")
+      : [
+          "Explain the subject according to its complexity.",
+          "Respect the user's requested point count.",
+          "Avoid unnecessary repetition."
+        ].join(" "),
+
+    "Finish with a specific practical next action."
+  ].join(" ");
+
+  const context = JSON.stringify({
+    investigation: analysis,
+    instruction:
+      "Use the structured analysis as context. Distinguish verified evidence from plans, assumptions and hypotheses."
+  });
+
+  const response = await fetch(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        temperature: 0.2,
+        reasoning_effort: isGenesis ? "high" : "medium",
+        max_completion_tokens: maxCompletionTokens,
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
             content:
               `Question: ${question}\n\n` +
               `Investigation context:\n${context}`
@@ -248,6 +342,7 @@ async function askGroq(question, analysis) {
 
   if (!response.ok) {
     const errorText = await response.text();
+
     throw new Error(
       `Groq request failed (HTTP ${response.status}): ` +
       errorText.slice(0, 500)
@@ -255,12 +350,17 @@ async function askGroq(question, analysis) {
   }
 
   const result = await response.json();
+
+  const choice = result?.choices?.[0];
+  const answer = choice?.message?.content;
+
   console.log("NOVA GENESIS DEBUG:", {
-  finishReason: result?.choices?.[0]?.finish_reason,
-  usage: result?.usage,
-  answerLength: result?.choices?.[0]?.message?.content?.length
-});
-  const answer = result?.choices?.[0]?.message?.content;
+    requestedPoints,
+    maxCompletionTokens,
+    finishReason: choice?.finish_reason,
+    usage: result?.usage,
+    answerLength: answer?.length
+  });
 
   if (typeof answer !== "string" || !answer.trim()) {
     throw new Error("Groq returned no readable answer.");
@@ -268,6 +368,7 @@ async function askGroq(question, analysis) {
 
   return answer.trim();
 }
+    
 
 
 // CORE INTELLIGENCE ENDPOINT

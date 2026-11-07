@@ -229,7 +229,7 @@ async function askGroq(question, analysis) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         temperature: 0.2,
-        max_completion_tokens: isGenesis ? 4000 : 800,
+        max_completion_tokens: maxCompletionTokens,
         messages: [
           {
             role: "system",

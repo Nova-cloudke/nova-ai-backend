@@ -313,61 +313,27 @@ async function askGroq(question, analysis) {
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0.2,
-        reasoning_effort: isGenesis ? "high" : "medium",
-        max_completion_tokens: maxCompletionTokens,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content:
-              `Question: ${question}\n\n` +
-              `Investigation context:\n${context}`
-          }
-        ]
-      })
-    }
+async function askGroq(question, analysis) {
+  const isGenesis = Boolean(analysis?.novaGenesis);
+
+  const requestedPoints = getRequestedPointCount(question);
+
+  const maxCompletionTokens = Math.min(
+    65536,
+    requestedPoints
+      ? 1800 + requestedPoints * 160
+      : isGenesis
+        ? 5000
+        : 1200
   );
 
-  if (!response.ok) {
-    const errorText = await response.text();
-
-    throw new Error(
-      `Groq request failed (HTTP ${response.status}): ` +
-      errorText.slice(0, 500)
-    );
-  }
-
-  const result = await response.json();
-
-  const choice = result?.choices?.[0];
-  const answer = choice?.message?.content;
-
-  console.log("NOVA GENESIS DEBUG:", {
-    requestedPoints,
-    maxCompletionTokens,
-    finishReason: choice?.finish_reason,
-    usage: result?.usage,
-    answerLength: answer?.length
+  const context = JSON.stringify({
+    investigation: analysis,
+    instruction:
+      "Use this structured analysis as context. Do not treat plans, assumptions or hypotheses as verified evidence."
   });
 
-  if (typeof answer !== "string" || !answer.trim()) {
-    throw new Error("Groq returned no readable answer.");
-  }
-
-  return answer.trim();
-}
+  // Keep the existing systemPrompt and fetch request below.
     
 
 

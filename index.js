@@ -579,6 +579,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+// EXPERIMENT OBSERVATIONS AND COMPLETION
+
+const experimentActionMatch = pathname.match(
+  /^\/api\/admin\/experiments\/(\d+)\/(observations|complete)$/
+);
+
+if (experimentActionMatch) {
+  try {
+    return await handleExperimentAction(
+      req,
+      res,
+      experimentActionMatch[1],
+      experimentActionMatch[2]
+    );
+  } catch (error) {
+    console.error("Experiment action failed:", error.message);
+
+    return sendJSON(res, 500, {
+      success: false,
+      error: "Experiment operation failed."
+    });
+  }
+}
+  
   // KNOWLEDGE, EVIDENCE AND EXPERIMENTS
 
   const adminMatch = pathname.match(

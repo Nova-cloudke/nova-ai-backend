@@ -296,28 +296,14 @@ async function askGroq(question, analysis) {
           "Do not repeat information just to reach the requested point count.",
           "Do not invent evidence to make the investigation appear complete."
         ].join(" ")
-      : [
-          "Explain the subject according to its complexity.",
-          "Respect the user's requested point count.",
-          "Avoid unnecessary repetition."
-        ].join(" "),
 
-    "Finish with a specific practical next action."
-  ].join(" ");
-
-  const context = JSON.stringify({
-    investigation: analysis,
-    instruction:
-      "Use the structured analysis as context. Distinguish verified evidence from plans, assumptions and hypotheses."
-  });
-
-  const response = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
 async function askGroq(question, analysis) {
   const isGenesis = Boolean(analysis?.novaGenesis);
 
+  // Detect the requested number of points.
   const requestedPoints = getRequestedPointCount(question);
 
+  // Calculate an appropriate response token budget.
   const maxCompletionTokens = Math.min(
     65536,
     requestedPoints
@@ -327,15 +313,129 @@ async function askGroq(question, analysis) {
         : 1200
   );
 
+  const pointInstruction = requestedPoints
+    ? `The user requests exactly ${requestedPoints} meaningful numbered points.
+       Deliver exactly ${requestedPoints} points.
+       Number continuously from 1 to ${requestedPoints}.
+       Do not silently reduce the requested count.`
+    : "If no number is requested, provide 3 to 5 useful points where appropriate.";
+
+  const systemPrompt = [
+    "You are Nova AI, the intelligence engine for Nova Cloud.",
+    "Answer the user's actual question directly.",
+    "Use clear, detailed and practical language.",
+    "Every numbered point must contribute meaningful information.",
+    pointInstruction,
+
+    "Separate facts, assumptions, hypotheses and unknowns.",
+    "Never invent statistics, sources or research findings.",
+    "Never present hypotheses as verified evidence.",
+    "Never claim to have performed live research unless it occurred.",
+    "Use stored knowledge, evidence and experiments where relevant.",
+
+    isGenesis
+      ? [
+          "NOVA GENESIS INVESTIGATION FRAMEWORK:",
+          "Always follow all eight investigation stages in their original order.",
+          "The eight stages are the permanent investigation framework, not the answer point limit.",
+
+          "Stage 1: Understand the question and define the actual problem.",
+          "Stage 2: Examine existing knowledge and relevant information.",
+          "Stage 3: Identify knowledge gaps and unanswered questions.",
+          "Stage 4: Develop testable hypotheses and explain their rationale.",
+          "Stage 5: Design practical experiments with clear methods and measurements.",
+          "Stage 6: Identify, collect and evaluate relevant evidence.",
+          "Stage 7: Update conclusions according to available evidence.",
+          "Stage 8: Recommend practical solutions and next actions.",
+
+          "Explain every stage meaningfully.",
+          "Distribute requested numbered points across all eight stages.",
+          "Keep numbering continuous throughout the investigation.",
+          "Use clear stage headings without restarting point numbering.",
+          "Identify stages where evidence remains unverified.",
+          "Connect findings from earlier stages to later stages.",
+          "Do not repeat information to reach the requested point count.",
+          "Never invent evidence to make an investigation appear complete."
+        ].join(" ")
+      : [
+          "Explain the subject according to its complexity.",
+          "Respect the user's requested point count.",
+          "Avoid unnecessary repetition."
+        ].join(" "),
+
+    "End with one specific practical next action."
+  ].join(" ");
+
   const context = JSON.stringify({
     investigation: analysis,
     instruction:
       "Use this structured analysis as context. Do not treat plans, assumptions or hypotheses as verified evidence."
   });
 
-  // Keep the existing systemPrompt and fetch request below.
-    
+  try {
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          temperature: 0.2,
+          max_completion_tokens: maxCompletionTokens,
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "user",
+              content:
+                `Question:\n${question}\n\n` +
+                `Structured investigation context:\n${context}`
+            }
+          ]
+        })
+      }
+    );
 
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("GROQ API ERROR:", data);
+
+      throw new Error(
+        data?.error?.message ||
+        `Groq API request failed with status ${response.status}`
+      );
+    }
+
+    const answer = data?.choices?.[0]?.message?.content;
+
+    if (!answer || !answer.trim()) {
+      console.error("EMPTY GROQ RESPONSE:", data);
+
+      throw new Error("Groq returned an empty response.");
+    }
+
+    if (isGenesis) {
+      console.log("NOVA GENESIS DEBUG:", {
+        finishReason: data.choices[0].finish_reason,
+        usage: data.usage,
+        answerLength: answer.length
+      });
+    }
+
+    return answer.trim();
+
+  } catch (error) {
+    console.error("ASK GROQ ERROR:", error);
+    throw error;
+  }
+}
+                       
 
 // CORE INTELLIGENCE ENDPOINT
 

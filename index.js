@@ -154,23 +154,42 @@ function createFallbackAnswer(question, analysis) {
 
 // GROQ INTELLIGENCE
 
+
 async function askGroq(question, analysis) {
+  const isGenesis = Boolean(analysis?.novaGenesis);
+
   const systemPrompt = [
     "You are Nova AI, the intelligence engine for Nova Cloud.",
     "Answer the user's actual question directly.",
     "Use simple, clear and practical language.",
-    "Keep the entire answer under 250 words.",
     "Use numbered points in this exact style: 1) 2) 3).",
-    "Follow the number of points explicitly requested by the user.",
-    "If no number is requested, provide 3 to 5 useful points.",
     "Each point must contain meaningful information.",
-    "Avoid repeated ideas and unnecessary introductions.",
     "Separate established facts, assumptions and unknowns.",
     "Never invent statistics, sources or research findings.",
     "Do not present hypotheses as verified evidence.",
     "Do not claim to have performed live internet research.",
     "Use stored knowledge, evidence and experiments where relevant.",
     "Treat stored records according to their evidence status.",
+    isGenesis
+      ? [
+          "IMPORTANT: Complete the entire Nova Genesis investigation.",
+          "You MUST include all eight stages below, in order.",
+          "1) Understand the question.",
+          "2) Examine existing knowledge.",
+          "3) Identify knowledge gaps.",
+          "4) Develop testable hypotheses.",
+          "5) Design experiments.",
+          "6) Collect and evaluate evidence.",
+          "7) Update conclusions.",
+          "8) Recommend practical next actions.",
+          "Do not stop after proposing an experiment.",
+          "If evidence has not yet been collected, clearly say so.",
+          "Keep each stage concise but meaningful."
+        ].join(" ")
+      : [
+          "Follow the number of points explicitly requested by the user.",
+          "If no number is requested, provide 3 to 5 useful points."
+        ].join(" "),
     "End with one specific practical next action."
   ].join(" ");
 
@@ -191,6 +210,7 @@ async function askGroq(question, analysis) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         temperature: 0.2,
+        max_completion_tokens: isGenesis ? 1200 : 800,
         messages: [
           {
             role: "system",
@@ -209,7 +229,6 @@ async function askGroq(question, analysis) {
 
   if (!response.ok) {
     const errorText = await response.text();
-
     throw new Error(
       `Groq request failed (HTTP ${response.status}): ` +
       errorText.slice(0, 500)
@@ -225,6 +244,7 @@ async function askGroq(question, analysis) {
 
   return answer.trim();
 }
+
 
 // CORE INTELLIGENCE ENDPOINT
 

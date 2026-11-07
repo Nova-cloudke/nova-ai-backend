@@ -413,6 +413,70 @@ async function handleAdminData(req, res, category) {
   });
 }
 
+// EXPERIMENT LIFECYCLE ENDPOINTS
+
+async function handleExperimentAction(req, res, id, action) {
+  if (!authenticateAdmin(req, res)) {
+    return;
+  }
+
+  if (!enginesReady) {
+    return sendJSON(res, 503, {
+      success: false,
+      error: "Storage engines are not ready."
+    });
+  }
+
+  if (req.method !== "POST") {
+    return sendJSON(res, 405, {
+      success: false,
+      error: "Method not allowed."
+    });
+  }
+
+  let body;
+
+  try {
+    body = await readBody(req);
+  } catch (error) {
+    return sendJSON(res, 400, {
+      success: false,
+      error: error.message
+    });
+  }
+
+  try {
+    let record;
+
+    if (action === "observations") {
+      record = await postgresEngines.addObservation(
+        id,
+        body.observation
+      );
+    }
+
+    if (action === "complete") {
+      record = await postgresEngines.completeExperiment(
+        id,
+        body.conclusion
+      );
+    }
+
+    return sendJSON(res, 200, {
+      success: true,
+      category: "experiments",
+      message: "Experiment updated successfully.",
+      record
+    });
+
+  } catch (error) {
+    return sendJSON(res, 400, {
+      success: false,
+      error: error.message
+    });
+  }
+}
+
 // HTTP SERVER
 
 const server = http.createServer(async (req, res) => {

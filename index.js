@@ -154,7 +154,19 @@ function createFallbackAnswer(question, analysis) {
 
 // GROQ INTELLIGENCE
 
+function getRequestedPointCount(question) {
+  const match = String(question || "").match(
+    /\b(\d{1,3})\s*[- ]?\s*points?\b/i
+  );
 
+  if (!match) return null;
+
+  const count = Number(match[1]);
+
+  return Number.isSafeInteger(count) && count > 0
+    ? count
+    : null;
+                }
 async function askGroq(question, analysis) {
   const isGenesis = Boolean(analysis?.novaGenesis);
 

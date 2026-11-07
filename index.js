@@ -236,6 +236,11 @@ async function askGroq(question, analysis) {
   }
 
   const result = await response.json();
+  console.log("NOVA GENESIS DEBUG:", {
+  finishReason: result?.choices?.[0]?.finish_reason,
+  usage: result?.usage,
+  answerLength: result?.choices?.[0]?.message?.content?.length
+});
   const answer = result?.choices?.[0]?.message?.content;
 
   if (typeof answer !== "string" || !answer.trim()) {

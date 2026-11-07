@@ -24,7 +24,8 @@ function sendJSON(res, status, data) {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Nova-Admin-Key"
+    "Access-Control-Allow-Headers":
+      "Content-Type, X-Nova-Admin-Key"
   });
 
   res.end(JSON.stringify(data));
@@ -96,9 +97,14 @@ function getStoredContext() {
   function readSafely(name, getter) {
     try {
       const result = getter();
+
       return Array.isArray(result) ? result : [];
     } catch (error) {
-      console.error(`${name} storage unavailable:`, error.message);
+      console.error(
+        `${name} storage unavailable:`,
+        error.message
+      );
+
       return [];
     }
   }
@@ -166,144 +172,15 @@ function getRequestedPointCount(question) {
   return Number.isSafeInteger(count) && count > 0
     ? count
     : null;
-                }
-async function askGroq(question, analysis) {
-  const isGenesis = Boolean(analysis?.novaGenesis);
-
-  const systemPrompt = [
-    "You are Nova AI, the intelligence engine for Nova Cloud.",
-    "Answer the user's actual question directly.",
-    "Use simple, clear and practical language.",
-    "Use numbered points in this exact style: 1) 2) 3).",
-    "Each point must contain meaningful information.",
-    "Nova Genesis must always follow its eight investigation stages.",
-"The eight stages are permanent and must never be removed or reordered.",
-"The user's requested point count controls the depth and number of numbered points, not the investigation framework.",
-"Distribute the requested number of meaningful points across all eight stages.",
-"If the user requests 50 points, provide 50 meaningful points organised under the eight stages.",
-"Never confuse investigation stages with numbered answer points.",
-"Never invent information or repeat points merely to reach a requested count.",
-    "Separate established facts, assumptions and unknowns.",
-    "Never invent statistics, sources or research findings.",
-    "Do not present hypotheses as verified evidence.",
-    "Do not claim to have performed live internet research.",
-    "Use stored knowledge, evidence and experiments where relevant.",
-    "Treat stored records according to their evidence status.",
-    isGenesis
-      ? [
-          "IMPORTANT: Complete the entire Nova Genesis investigation.",
-          "You MUST include all eight stages below, in order.",
-          "1) Understand the question.",
-          "2) Examine existing knowledge.",
-          "3) Identify knowledge gaps.",
-          "4) Develop testable hypotheses.",
-          "5) Design experiments.",
-          "6) Collect and evaluate evidence.",
-          "7) Update conclusions.",
-          "8) Recommend practical next actions.",
-          "Do not stop after proposing an experiment.",
-          "If evidence has not yet been collected, clearly say so.",
-          "Keep each stage concise but meaningful."
-        ].join(" ")
-      : [
-          "Follow the number of points explicitly requested by the user.",
-          "If no number is requested, provide 3 to 5 useful points."
-        ].join(" "),
-    "End with one specific practical next action."
-  ].join(" ");
-
-  const context = JSON.stringify({
-    investigation: analysis,
-    instruction:
-      "Use this structured analysis as context. Do not treat plans, assumptions or hypotheses as verified evidence."
-  });
-
-  const response = await fetch(
-    "https://api.groq.com/openai/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0.2,
-        max_completion_tokens: maxCompletionTokens,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
+}
 
 async function askGroq(question, analysis) {
   const isGenesis = Boolean(analysis?.novaGenesis);
 
-  // Each request gets its own point count and output budget.
   const requestedPoints = getRequestedPointCount(question);
 
-  const maxCompletionTokens = Math.min(
-    65536,
-    requestedPoints
-      ? 1800 + requestedPoints * 160
-      : isGenesis ? 5000 : 1200
-  );
+  // Dynamic completion token allocation.
 
-  const pointInstruction = requestedPoints
-    ? `The user requests exactly ${requestedPoints} meaningful numbered points.
-       Deliver exactly ${requestedPoints} points.
-       Number them continuously from 1 to ${requestedPoints}.
-       Do not silently reduce the requested count.`
-    : "Choose an appropriate answer length based on the complexity of the question.";
-
-  const systemPrompt = [
-    "You are Nova AI, the intelligence engine for Nova Cloud.",
-    "Answer the user's actual question directly.",
-    "Use clear, detailed, practical language.",
-    "Every numbered point must contribute meaningful information.",
-    pointInstruction,
-
-    "Separate facts, assumptions, hypotheses and unknowns.",
-    "Never invent statistics, sources or research findings.",
-    "Never present hypotheses as verified evidence.",
-    "Never claim to have performed live research unless it occurred.",
-    "Use stored knowledge, evidence and experiments where relevant.",
-
-    isGenesis
-      ? [
-          "NOVA GENESIS INVESTIGATION FRAMEWORK:",
-          "Always follow all eight investigation stages in their original order.",
-          "The eight stages are the permanent investigation framework, not the answer point limit.",
-
-          "Stage 1: Understand the question and define the actual problem.",
-          "Stage 2: Examine existing knowledge and relevant information.",
-          "Stage 3: Identify knowledge gaps and unanswered questions.",
-          "Stage 4: Develop testable hypotheses and explain their rationale.",
-          "Stage 5: Design practical experiments with clear methods and measurements.",
-          "Stage 6: Identify, collect and evaluate relevant evidence.",
-          "Stage 7: Update conclusions according to the available evidence.",
-          "Stage 8: Recommend practical solutions and next actions.",
-
-          "Explain every stage meaningfully. Do not merely list stage headings.",
-          "For each stage, provide relevant analysis, explanations and practical details.",
-          "Distribute the requested numbered points across all eight stages.",
-          "Keep numbering continuous throughout the entire investigation.",
-          "Use clear stage headings without restarting point numbering.",
-          "For stages without collected evidence, clearly identify what remains unverified.",
-          "Connect findings from earlier stages to later stages.",
-          "Do not repeat information just to reach the requested point count.",
-          "Do not invent evidence to make the investigation appear complete."
-        ].join(" ")
-
-async function askGroq(question, analysis) {
-  const isGenesis = Boolean(analysis?.novaGenesis);
-
-  // Detect the requested number of points.
-  const requestedPoints = getRequestedPointCount(question);
-
-  // Calculate an appropriate response token budget.
   const maxCompletionTokens = Math.min(
     65536,
     requestedPoints
@@ -314,8 +191,8 @@ async function askGroq(question, analysis) {
   );
 
   const pointInstruction = requestedPoints
-    ? `The user requests exactly ${requestedPoints} meaningful numbered points.
-       Deliver exactly ${requestedPoints} points.
+    ? `The user requests exactly ${requestedPoints} numbered points.
+       Provide exactly ${requestedPoints} meaningful points.
        Number continuously from 1 to ${requestedPoints}.
        Do not silently reduce the requested count.`
     : "If no number is requested, provide 3 to 5 useful points where appropriate.";
@@ -323,43 +200,49 @@ async function askGroq(question, analysis) {
   const systemPrompt = [
     "You are Nova AI, the intelligence engine for Nova Cloud.",
     "Answer the user's actual question directly.",
-    "Use clear, detailed and practical language.",
-    "Every numbered point must contribute meaningful information.",
+    "Use simple, clear, practical and detailed language.",
+    "Use numbered points in this format: 1) 2) 3).",
+    "Every point must contribute meaningful information.",
     pointInstruction,
 
-    "Separate facts, assumptions, hypotheses and unknowns.",
+    "Separate established facts, assumptions, hypotheses and unknowns.",
     "Never invent statistics, sources or research findings.",
     "Never present hypotheses as verified evidence.",
     "Never claim to have performed live research unless it occurred.",
     "Use stored knowledge, evidence and experiments where relevant.",
+    "Respect the evidence status of stored records.",
 
     isGenesis
       ? [
           "NOVA GENESIS INVESTIGATION FRAMEWORK:",
-          "Always follow all eight investigation stages in their original order.",
-          "The eight stages are the permanent investigation framework, not the answer point limit.",
+          "Always complete all eight investigation stages in their original order.",
+          "The eight stages are permanent and must never be removed or reordered.",
+          "The investigation stages are not the answer point limit.",
 
           "Stage 1: Understand the question and define the actual problem.",
           "Stage 2: Examine existing knowledge and relevant information.",
           "Stage 3: Identify knowledge gaps and unanswered questions.",
           "Stage 4: Develop testable hypotheses and explain their rationale.",
           "Stage 5: Design practical experiments with clear methods and measurements.",
-          "Stage 6: Identify, collect and evaluate relevant evidence.",
+          "Stage 6: Collect and evaluate relevant evidence.",
           "Stage 7: Update conclusions according to available evidence.",
           "Stage 8: Recommend practical solutions and next actions.",
 
           "Explain every stage meaningfully.",
           "Distribute requested numbered points across all eight stages.",
           "Keep numbering continuous throughout the investigation.",
-          "Use clear stage headings without restarting point numbering.",
-          "Identify stages where evidence remains unverified.",
+          "Never restart numbering at a new stage.",
+          "Use clear headings for the eight stages.",
+          "Identify what remains unverified.",
           "Connect findings from earlier stages to later stages.",
-          "Do not repeat information to reach the requested point count.",
-          "Never invent evidence to make an investigation appear complete."
+          "Do not invent evidence.",
+          "Do not repeat points merely to reach the requested count.",
+          "Do not stop after designing experiments.",
+          "Clearly distinguish proposed experiments from completed experiments."
         ].join(" ")
       : [
           "Explain the subject according to its complexity.",
-          "Respect the user's requested point count.",
+          "Respect the requested number of points.",
           "Avoid unnecessary repetition."
         ].join(" "),
 
@@ -414,7 +297,7 @@ async function askGroq(question, analysis) {
 
     const answer = data?.choices?.[0]?.message?.content;
 
-    if (!answer || !answer.trim()) {
+    if (typeof answer !== "string" || !answer.trim()) {
       console.error("EMPTY GROQ RESPONSE:", data);
 
       throw new Error("Groq returned an empty response.");
@@ -424,7 +307,9 @@ async function askGroq(question, analysis) {
       console.log("NOVA GENESIS DEBUG:", {
         finishReason: data.choices[0].finish_reason,
         usage: data.usage,
-        answerLength: answer.length
+        answerLength: answer.length,
+        requestedPoints,
+        maxCompletionTokens
       });
     }
 
@@ -435,7 +320,6 @@ async function askGroq(question, analysis) {
     throw error;
   }
 }
-                       
 
 // CORE INTELLIGENCE ENDPOINT
 
@@ -496,7 +380,10 @@ async function handleCore(req, res) {
       getStoredContext()
     );
   } catch (error) {
-    console.error("Independent intelligence error:", error.message);
+    console.error(
+      "Independent intelligence error:",
+      error.message
+    );
 
     return sendJSON(res, 500, {
       success: false,
@@ -513,6 +400,7 @@ async function handleCore(req, res) {
       aiProvider = "Groq";
     } catch (error) {
       console.error("Groq unavailable:", error.message);
+
       answer = createFallbackAnswer(question, analysis);
     }
   } else {
@@ -565,7 +453,10 @@ async function handleAdminData(req, res, category) {
         records
       });
     } catch (error) {
-      console.error("Data retrieval error:", error.message);
+      console.error(
+        "Data retrieval error:",
+        error.message
+      );
 
       return sendJSON(res, 500, {
         success: false,
@@ -673,6 +564,13 @@ async function handleExperimentAction(req, res, id, action) {
       );
     }
 
+    if (!record) {
+      return sendJSON(res, 404, {
+        success: false,
+        error: "Experiment not found."
+      });
+    }
+
     return sendJSON(res, 200, {
       success: true,
       category: "experiments",
@@ -681,6 +579,11 @@ async function handleExperimentAction(req, res, id, action) {
     });
 
   } catch (error) {
+    console.error(
+      "Experiment update error:",
+      error.message
+    );
+
     return sendJSON(res, 400, {
       success: false,
       error: error.message
@@ -709,7 +612,8 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Nova-Admin-Key"
+      "Access-Control-Allow-Headers":
+        "Content-Type, X-Nova-Admin-Key"
     });
 
     return res.end();
@@ -781,7 +685,10 @@ const server = http.createServer(async (req, res) => {
     try {
       return await handleCore(req, res);
     } catch (error) {
-      console.error("Core request failed:", error.message);
+      console.error(
+        "Core request failed:",
+        error.message
+      );
 
       return sendJSON(res, 500, {
         success: false,
@@ -790,30 +697,33 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-// EXPERIMENT OBSERVATIONS AND COMPLETION
+  // EXPERIMENT OBSERVATIONS AND COMPLETION
 
-const experimentActionMatch = pathname.match(
-  /^\/api\/admin\/experiments\/(\d+)\/(observations|complete)$/
-);
+  const experimentActionMatch = pathname.match(
+    /^\/api\/admin\/experiments\/(\d+)\/(observations|complete)$/
+  );
 
-if (experimentActionMatch) {
-  try {
-    return await handleExperimentAction(
-      req,
-      res,
-      experimentActionMatch[1],
-      experimentActionMatch[2]
-    );
-  } catch (error) {
-    console.error("Experiment action failed:", error.message);
+  if (experimentActionMatch) {
+    try {
+      return await handleExperimentAction(
+        req,
+        res,
+        experimentActionMatch[1],
+        experimentActionMatch[2]
+      );
+    } catch (error) {
+      console.error(
+        "Experiment action failed:",
+        error.message
+      );
 
-    return sendJSON(res, 500, {
-      success: false,
-      error: "Experiment operation failed."
-    });
+      return sendJSON(res, 500, {
+        success: false,
+        error: "Experiment operation failed."
+      });
+    }
   }
-}
-  
+
   // KNOWLEDGE, EVIDENCE AND EXPERIMENTS
 
   const adminMatch = pathname.match(
@@ -835,7 +745,10 @@ if (experimentActionMatch) {
         adminMatch[1]
       );
     } catch (error) {
-      console.error("Admin endpoint error:", error.message);
+      console.error(
+        "Admin endpoint error:",
+        error.message
+      );
 
       return sendJSON(res, 500, {
         success: false,
@@ -896,4 +809,4 @@ server.listen(PORT, "0.0.0.0", () => {
 
   initializeDatabaseEngines();
 });
-             
+  
